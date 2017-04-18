@@ -1,5 +1,6 @@
 package com.mycompany.tcbot;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -10,14 +11,19 @@ import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEven
 import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
+import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
+import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.ConfigChange;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.InitedMessage;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
@@ -173,122 +179,149 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     int myChannelId = -1;
 
     @Override
-    public void logic() {
-    	if (!tcClient.isConnected()) {
-    		msgNum = 0;
-    		myChannelId = -1;
-    		return;
-    	}
+    public void logic() throws PogamutException {
+    	// FIRST COLLECT REQUIRED WEAPONS
+    	UT2004ItemType[] requiredWeapons = new UT2004ItemType[] { UT2004ItemType.LIGHTNING_GUN, UT2004ItemType.MINIGUN, UT2004ItemType.FLAK_CANNON };
     	
-    	// YOU CAN CHECK FOR ALL NEW MESSAGES IN THE LOGIC AS WELL
-    	for (TCMessage msg : tcClient.getMessages()) {
-    		log.info("InLogic: " + toString(msg));
-    	}
-    	
-    	if (myNumber != 1) return;
-    	
-    	if (tcClient.getConnectedAllBots().size() != 3) {
-    		// wait till all bots get connected...
+    	if (existsInMap(requiredWeapons)) { 
     		return;
-    	}
+    	}  
     	
-    	// WE WILL SEND MESSAGE EVERY 3 SECONDS (not to overload the console output...)
-    	if (!msgCooldown.tryUse()) return;
+    	if (!hasLoaded(requiredWeapons)) {
+    		Set<UT2004ItemType> missingWeapons = filterNotLoaded(requiredWeapons);
+    		collectWeapons(missingWeapons);
+    		return;
+    	} 
+   	
+    	if (!existsInMap(requiredWeapons))
+        {
+            return;
+        }
     	
-    	++msgNum;
-    	
-    	switch(msgNum) {
-    	case 1:
-    		log.info("Sending to ALL...");
-    		tcClient.sendToAll(new TCHello(info.getId(), "Hyo ALL!"));
-    		tcClient.sendToAllOthers(new TCHello(info.getId(), "Hyo ALL OTHERS!"));
-    		return;
-    	
-    	case 2:
-    		log.info("Sending to TEAM...");
-    		tcClient.sendToTeam(new TCHello(info.getId(), "Hyo TEAM!"));
-    		tcClient.sendToTeamOthers(new TCHello(info.getId(), "Hyo others in the TEAM!"));
-    		return;
-    		
-    	case 3:    		
-    		Set<UnrealId> connected = new HashSet<UnrealId>(tcClient.getConnectedAllBots());
-    		connected.remove(info.getId());
-    		UnrealId sendTo = MyCollections.getRandom(connected);
-    		if (sendTo != null) {
-    			log.info("Sending to BOT " + sendTo.getStringId() + "...");
-    			tcClient.sendToBot(sendTo, new TCHello(info.getId(), "Private ears only!"));
-    		}
-    		return;
-    		
-    	case 4:
-    		log.info("Creating channel...");
-    		tcClient.requestCreateChannel().addFutureListener(new IFutureListener<TCInfoTeamChannelCreated>() {				
-				@Override
-				public void futureEvent(FutureWithListeners<TCInfoTeamChannelCreated> source, FutureStatus oldStatus, FutureStatus newStatus) {
-					if (newStatus == FutureStatus.FUTURE_IS_READY) {
-						log.info("Channel " + source.get().getChannel().getChannelId() + " created...");
-						myChannelId = source.get().getChannel().getChannelId();
-					} else {
-						log.warning("FAILED TO CREATE CHANNEL -> retrying...");
-						myChannelId = -1;
-						msgNum = 3;						
-					}
-				}
-			});
-    		return;
-    		
-    	case 5:
-    		if (myChannelId < 0) {
-    			--msgNum;
-    			return;
-    		}
-    		if (tcClient.getChannel(myChannelId).getConnectedBots().size() <= 1) {
-    			log.warning("There are too few bots in the channel...");
-    			--msgNum;
-    			return;
-    		}
-    		log.info("Sending to CHANNEL...");
-    		tcClient.sendToChannel(myChannelId, new TCHello(info.getId(), "Channels are great!"));    		
-    		return;
-    		
-    	case 6:
-    		log.info("Destroying channel...");
-    		if (tcClient.getChannel(myChannelId) == null) {
-    			// LOGIC GOT HERE BEFORE FUTURE LISTENER
-    			msgNum = 0;
-    			return;
-    		}
-    		tcClient.requestDestroyChannel(myChannelId).addFutureListener(new IFutureListener<TCInfoTeamChannelDestroyed>() {				
-				@Override
-				public void futureEvent(FutureWithListeners<TCInfoTeamChannelDestroyed> source, FutureStatus oldStatus, FutureStatus newStatus) {
-					if (newStatus == FutureStatus.FUTURE_IS_READY) {
-						log.info("Channel destroyed...");
-						myChannelId = -1;
-						msgNum = 0;
-					} else {
-						log.info("FAILED TO DESTROY THE CHANNEL ...");
-						if (tcClient.getChannel(myChannelId) == null) {
-							log.info("Channel does not exist nevertheless...");
-							myChannelId = -1;
-							msgNum = 0;
-						} else {
-							log.info("Channel still exist, retrying...");
-							msgNum = 5;
-						}
-					}
-				}
-			});
-    		
-    	case 8:
-    		--msgNum;
-    		return;
-    		
-    	default:
-    		return;
-    	}
-    	
-    	
+    	if (!hasLoaded(requiredWeapons))
+        {
+            Set<UT2004ItemType> missingWeapons = filterNotLoaded(requiredWeapons);
+         
+            if (info.isShooting())
+            {
+                shoot.stopShooting();
+            }
+        
+            if (collectWeapons(missingWeapons))
+            {
+                return;
+            }
+        }
     }
+    
+    /**
+     * Returns the nearest spawned item of 'type'.
+     * @param type
+     * @return
+     */
+    private Item getNearestSpawnedItem(UT2004ItemType type) {
+    	final NavPoint nearestNavPoint = info.getNearestNavPoint();
+    	Item nearest = DistanceUtils.getNearest(
+    			items.getSpawnedItems(type).values(), 
+    			info.getNearestNavPoint(),
+    			new DistanceUtils.IGetDistance<Item>() {
+					@Override
+					public double getDistance(Item object, ILocated target) {
+						return fwMap.getDistance(object.getNavPoint(), nearestNavPoint);
+					}
+    		
+    	});
+    	return nearest;
+    }
+    
+    /**
+     * Translates 'types' to the set of "nearest spawned items" of those 'types'.
+     * @param types
+     * @return
+     */
+    private Set<Item> getNearestSpawnedItems(Collection<UT2004ItemType> types) {
+    	Set<Item> result = new HashSet<Item>();
+    	for (UT2004ItemType type : types) {
+    		Item n = getNearestSpawnedItem(type);
+    		if (n != null) {
+    			result.add(n);
+    		}
+    	}
+    	return result;
+    }
+    
+    /**
+     * Displays info tag on the bot.
+     * @param goal
+     */
+    private void debugGoal(String goal) {
+    	bot.getBotName().setInfo(goal);
+    }
+    
+    /**
+	 * BEHAVIOR - try to collect 'requiredWeapons'; start with the nearest first.
+	 * @param requiredWeapons
+	 */
+    private boolean collectWeapons(Collection<UT2004ItemType> requiredWeapons) {
+    	Set<Item> nearest = getNearestSpawnedItems(requiredWeapons);
+    	
+    	Item target = DistanceUtils.getNearest(nearest, info.getNearestNavPoint(), 
+				new DistanceUtils.IGetDistance<Item>() {
+					@Override
+					public double getDistance(final Item object, ILocated target) {
+						return fwMap.getDistance(object.getNavPoint(), info.getNearestNavPoint());
+					}			
+		});
+		if (target == null) {
+			log.severe("No item to navigate to! requiredWeapons.size() = " + requiredWeapons.size());
+			return false;
+		}
+		debugGoal("C:" + target.getType().getName() + " | " + (int)(fwMap.getDistance(target.getNavPoint(), info.getNearestNavPoint())));
+		
+		navigation.navigate(target);
+		
+		return true;
+	}
+    
+    /**
+	 * Returns weapons that the bot does not have or are not loaded.
+	 * @param requiredWeapons
+	 * @return
+	 */
+	private Set<UT2004ItemType> filterNotLoaded(UT2004ItemType[] requiredWeapons) {
+		Set<UT2004ItemType> result = new HashSet<UT2004ItemType>();
+		for (UT2004ItemType weapon : requiredWeapons) {
+    		if (!weaponry.hasPrimaryLoadedWeapon(weapon)) result.add(weapon);
+    	}
+		return result;
+	}
+    
+    /**
+     * Checks if all 'requiredWeapons' are loaded...
+     * @param requiredWeapons
+     * @return
+     */
+	private boolean hasLoaded(UT2004ItemType[] requiredWeapons) {
+    	for (UT2004ItemType weapon : requiredWeapons) {
+    		if (!weaponry.hasPrimaryLoadedWeapon(weapon)) return false;
+    	}
+		return true;
+	}
+    
+    /**
+     * Checks whether some items exists within the map ...
+     * @param requiredItems
+     * @return
+     */
+    private boolean existsInMap(UT2004ItemType[] requiredItems) {
+    	for (UT2004ItemType item : requiredItems) {
+    		if (items.getAllItems(item).size() == 0) {
+    			log.severe("Map " + game.getMapName() + " does not have any items of: " + item.getName());
+    			return false;
+    		}    		
+    	}
+		return true;
+	}
     
     /**
      * Called each time our bot die. Good for reseting all bot state dependent
