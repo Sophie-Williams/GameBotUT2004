@@ -1,5 +1,6 @@
 package com.mycompany.tcbot;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -10,14 +11,26 @@ import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEven
 import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
+import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
+import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
+import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.UT2004Items;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemTypeTranslator;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.ConfigChange;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.FlagInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.InitedMessage;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPointSharedImpl;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Player;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
@@ -32,9 +45,11 @@ import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
 import cz.cuni.amis.utils.collections.MyCollections;
 import cz.cuni.amis.utils.exception.PogamutException;
+import cz.cuni.amis.utils.flag.Flag;
 import cz.cuni.amis.utils.future.FutureStatus;
 import cz.cuni.amis.utils.future.FutureWithListeners;
 import cz.cuni.amis.utils.future.IFutureListener;
+import net.sf.saxon.om.Navigator;
 
 /**
  * Example of the bot that is communicating via {@link UT2004TCServer} using Apache Mina under the belt.
@@ -173,123 +188,168 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     int myChannelId = -1;
 
     @Override
-    public void logic() {
-    	if (!tcClient.isConnected()) {
-    		msgNum = 0;
-    		myChannelId = -1;
+    public void logic() throws PogamutException {
+    	
+    	// Pick a flag
+    	if (!haveFlag())
+    	{
     		return;
     	}
     	
-    	// YOU CAN CHECK FOR ALL NEW MESSAGES IN THE LOGIC AS WELL
-    	for (TCMessage msg : tcClient.getMessages()) {
-    		log.info("InLogic: " + toString(msg));
-    	}
-    	
-    	if (myNumber != 1) return;
-    	
-    	if (tcClient.getConnectedAllBots().size() != 3) {
-    		// wait till all bots get connected...
+    	// Combat
+    	if (combat())
+    	{
     		return;
-    	}
+        }
     	
-    	// WE WILL SEND MESSAGE EVERY 3 SECONDS (not to overload the console output...)
-    	if (!msgCooldown.tryUse()) return;
-    	
-    	++msgNum;
-    	
-    	switch(msgNum) {
-    	case 1:
-    		log.info("Sending to ALL...");
-    		tcClient.sendToAll(new TCHello(info.getId(), "Hyo ALL!"));
-    		tcClient.sendToAllOthers(new TCHello(info.getId(), "Hyo ALL OTHERS!"));
-    		return;
-    	
-    	case 2:
-    		log.info("Sending to TEAM...");
-    		tcClient.sendToTeam(new TCHello(info.getId(), "Hyo TEAM!"));
-    		tcClient.sendToTeamOthers(new TCHello(info.getId(), "Hyo others in the TEAM!"));
-    		return;
-    		
-    	case 3:    		
-    		Set<UnrealId> connected = new HashSet<UnrealId>(tcClient.getConnectedAllBots());
-    		connected.remove(info.getId());
-    		UnrealId sendTo = MyCollections.getRandom(connected);
-    		if (sendTo != null) {
-    			log.info("Sending to BOT " + sendTo.getStringId() + "...");
-    			tcClient.sendToBot(sendTo, new TCHello(info.getId(), "Private ears only!"));
-    		}
-    		return;
-    		
-    	case 4:
-    		log.info("Creating channel...");
-    		tcClient.requestCreateChannel().addFutureListener(new IFutureListener<TCInfoTeamChannelCreated>() {				
-				@Override
-				public void futureEvent(FutureWithListeners<TCInfoTeamChannelCreated> source, FutureStatus oldStatus, FutureStatus newStatus) {
-					if (newStatus == FutureStatus.FUTURE_IS_READY) {
-						log.info("Channel " + source.get().getChannel().getChannelId() + " created...");
-						myChannelId = source.get().getChannel().getChannelId();
-					} else {
-						log.warning("FAILED TO CREATE CHANNEL -> retrying...");
-						myChannelId = -1;
-						msgNum = 3;						
-					}
-				}
-			});
-    		return;
-    		
-    	case 5:
-    		if (myChannelId < 0) {
-    			--msgNum;
-    			return;
-    		}
-    		if (tcClient.getChannel(myChannelId).getConnectedBots().size() <= 1) {
-    			log.warning("There are too few bots in the channel...");
-    			--msgNum;
-    			return;
-    		}
-    		log.info("Sending to CHANNEL...");
-    		tcClient.sendToChannel(myChannelId, new TCHello(info.getId(), "Channels are great!"));    		
-    		return;
-    		
-    	case 6:
-    		log.info("Destroying channel...");
-    		if (tcClient.getChannel(myChannelId) == null) {
-    			// LOGIC GOT HERE BEFORE FUTURE LISTENER
-    			msgNum = 0;
-    			return;
-    		}
-    		tcClient.requestDestroyChannel(myChannelId).addFutureListener(new IFutureListener<TCInfoTeamChannelDestroyed>() {				
-				@Override
-				public void futureEvent(FutureWithListeners<TCInfoTeamChannelDestroyed> source, FutureStatus oldStatus, FutureStatus newStatus) {
-					if (newStatus == FutureStatus.FUTURE_IS_READY) {
-						log.info("Channel destroyed...");
-						myChannelId = -1;
-						msgNum = 0;
-					} else {
-						log.info("FAILED TO DESTROY THE CHANNEL ...");
-						if (tcClient.getChannel(myChannelId) == null) {
-							log.info("Channel does not exist nevertheless...");
-							myChannelId = -1;
-							msgNum = 0;
-						} else {
-							log.info("Channel still exist, retrying...");
-							msgNum = 5;
-						}
-					}
-				}
-			});
-    		
-    	case 8:
-    		--msgNum;
-    		return;
-    		
-    	default:
-    		return;
-    	}
-    	
-    	
+        pickUpItems();
     }
     
+    private boolean haveFlag()
+    {
+    	navigation.navigate(this.ctf.getEnemyBase());
+    	
+    	log.info("Flag info: " + this.ctf.getEnemyFlag().getState());
+    	
+    	if (this.ctf.getEnemyFlag().getState().equals("home"))
+    	{
+    		log.info("Go for the FLAG!");
+    		return false;
+    	}
+    	
+    	return true;
+    }
+    
+    private boolean wantToCombat()
+    {
+        return players.canSeeEnemies();
+    }
+    
+    private boolean combat()
+    {
+    	if (players.canSeeEnemies())
+    	{
+    		// INFO
+            bot.getBotName().setInfo("CMB");
+            bot.getBotName().deleteInfo("To");
+            
+            // navigation to nearest visible enemy
+            navigation.navigate(players.getNearestVisibleEnemy());
+            // shooting on nearest visible enemy
+            shoot.shoot(players.getNearestVisibleEnemy());
+            
+            return true;
+    	}
+    	else if (!players.canSeeEnemies() && info.isShooting())
+    	{
+    		shoot.stopShooting();
+    		
+    		return false;
+    	}
+    	else
+    	{
+    		return false;
+    	}
+    }
+    
+    private boolean pickUpItems()
+    {
+    	// INFO
+        bot.getBotName().setInfo("PUI");
+        
+        // if need HEALTH - pick up it
+        if (needHealthUrgent())
+        {
+        	if (pickupNearestHealth()) return true;        	
+        }
+        
+        // if need WEAPON - pick up it
+        if (pickupSomeWeapon())
+        {
+        	return true;
+        }
+        
+        // if need GOOD WEAPON - pick up it
+        if (pickupGoodItem())
+        {
+        	return true;
+        }
+        
+        // pick up RANDOM WEAPON
+        pickupRandomItem();
+        
+        return true;
+    }
+    
+    private boolean needHealthUrgent() {
+        return info.getHealth() < 20 || (info.getHealth() + info.getArmor()) < 40;
+    }
+    
+    private boolean pickupSomeWeapon() {
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.SHOCK_RIFLE)) {
+            if (navigateTo(UT2004ItemType.SHOCK_RIFLE)) return true;
+        }
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.MINIGUN)) {
+            if (navigateTo(UT2004ItemType.MINIGUN)) return true;
+        }
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN)) {
+            if (navigateTo(UT2004ItemType.LINK_GUN)) return true;
+        }
+        return false;
+    }
+    
+    private boolean pickupGoodItem() {
+        if (items.getSpawnedItems(UT2004ItemType.SHIELD_PACK).size() > 0) {
+            if (navigateTo(UT2004ItemType.SHIELD_PACK)) return true;
+        }
+        if (info.getHealth() < 80) {
+            if (navigateTo(UT2004ItemType.HEALTH_PACK)) return true;
+        }
+        return false;
+    }
+    
+    private boolean pickupNearestHealth() {
+        if (navigateTo(UT2004ItemType.HEALTH_PACK)) return true;
+        return false;
+    }
+    
+    private boolean pickupRandomItem() {
+        navigateWeapon();
+        return true;
+    }
+    
+    private boolean navigateTo(UT2004ItemType type) {
+        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType() == type) return true;
+        Item item = fwMap.getNearestItem(items.getSpawnedItems(type).values(), navPoints.getNearestNavPoint());        
+        if (item == null) {
+            log.warning("No " + type.getName() + " to run to...");
+            return false;
+        }
+        if (item.getLocation() == null) {
+            log.warning("No location " + type.getName() + " to run to...");
+            return false;
+        }
+        navigation.navigate(item);
+        bot.getBotName().setInfo("To", item.getType().getName());
+        say("To: " + item.getType().getName());
+        return true;
+    }
+    
+    private void navigateWeapon() {
+        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType().getCategory() == ItemType.Category.WEAPON) return;
+        Item item = MyCollections.getRandom(items.getSpawnedItems(ItemType.Category.WEAPON).values());        
+        if (item == null) {
+            log.warning("No weapon to run to...");
+            return;
+        }
+        navigation.navigate(item);
+        bot.getBotName().setInfo("To", item.getType().getName());
+    }
+    
+    private void say(String string) {
+        body.getCommunication().sendGlobalTextMessage(string);
+    }
+
     /**
      * Called each time our bot die. Good for reseting all bot state dependent
      * variables.
