@@ -13,17 +13,24 @@ import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.Eve
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
 import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
+import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.UT2004Items;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemTypeTranslator;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.ConfigChange;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.FlagInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.InitedMessage;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPointSharedImpl;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Player;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
@@ -38,9 +45,11 @@ import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
 import cz.cuni.amis.utils.collections.MyCollections;
 import cz.cuni.amis.utils.exception.PogamutException;
+import cz.cuni.amis.utils.flag.Flag;
 import cz.cuni.amis.utils.future.FutureStatus;
 import cz.cuni.amis.utils.future.FutureWithListeners;
 import cz.cuni.amis.utils.future.IFutureListener;
+import net.sf.saxon.om.Navigator;
 
 /**
  * Example of the bot that is communicating via {@link UT2004TCServer} using Apache Mina under the belt.
@@ -180,149 +189,167 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 
     @Override
     public void logic() throws PogamutException {
-    	// FIRST COLLECT REQUIRED WEAPONS
-    	UT2004ItemType[] requiredWeapons = new UT2004ItemType[] { UT2004ItemType.LIGHTNING_GUN, UT2004ItemType.MINIGUN, UT2004ItemType.FLAK_CANNON };
     	
-    	if (existsInMap(requiredWeapons)) { 
+    	// Pick a flag
+    	if (!haveFlag())
+    	{
     		return;
-    	}  
+    	}
     	
-    	if (!hasLoaded(requiredWeapons)) {
-    		Set<UT2004ItemType> missingWeapons = filterNotLoaded(requiredWeapons);
-    		collectWeapons(missingWeapons);
+    	// Combat
+    	if (combat())
+    	{
     		return;
-    	} 
-   	
-    	if (!existsInMap(requiredWeapons))
+        }
+    	
+        pickUpItems();
+    }
+    
+    private boolean haveFlag()
+    {
+    	navigation.navigate(this.ctf.getEnemyBase());
+    	
+    	log.info("Flag info: " + this.ctf.getEnemyFlag().getState());
+    	
+    	if (this.ctf.getEnemyFlag().getState().equals("home"))
+    	{
+    		log.info("Go for the FLAG!");
+    		return false;
+    	}
+    	
+    	return true;
+    }
+    
+    private boolean wantToCombat()
+    {
+        return players.canSeeEnemies();
+    }
+    
+    private boolean combat()
+    {
+    	if (players.canSeeEnemies())
+    	{
+    		// INFO
+            bot.getBotName().setInfo("CMB");
+            bot.getBotName().deleteInfo("To");
+            
+            // navigation to nearest visible enemy
+            navigation.navigate(players.getNearestVisibleEnemy());
+            // shooting on nearest visible enemy
+            shoot.shoot(players.getNearestVisibleEnemy());
+            
+            return true;
+    	}
+    	else if (!players.canSeeEnemies() && info.isShooting())
+    	{
+    		shoot.stopShooting();
+    		
+    		return false;
+    	}
+    	else
+    	{
+    		return false;
+    	}
+    }
+    
+    private boolean pickUpItems()
+    {
+    	// INFO
+        bot.getBotName().setInfo("PUI");
+        
+        // if need HEALTH - pick up it
+        if (needHealthUrgent())
         {
+        	if (pickupNearestHealth()) return true;        	
+        }
+        
+        // if need WEAPON - pick up it
+        if (pickupSomeWeapon())
+        {
+        	return true;
+        }
+        
+        // if need GOOD WEAPON - pick up it
+        if (pickupGoodItem())
+        {
+        	return true;
+        }
+        
+        // pick up RANDOM WEAPON
+        pickupRandomItem();
+        
+        return true;
+    }
+    
+    private boolean needHealthUrgent() {
+        return info.getHealth() < 20 || (info.getHealth() + info.getArmor()) < 40;
+    }
+    
+    private boolean pickupSomeWeapon() {
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.SHOCK_RIFLE)) {
+            if (navigateTo(UT2004ItemType.SHOCK_RIFLE)) return true;
+        }
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.MINIGUN)) {
+            if (navigateTo(UT2004ItemType.MINIGUN)) return true;
+        }
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN)) {
+            if (navigateTo(UT2004ItemType.LINK_GUN)) return true;
+        }
+        return false;
+    }
+    
+    private boolean pickupGoodItem() {
+        if (items.getSpawnedItems(UT2004ItemType.SHIELD_PACK).size() > 0) {
+            if (navigateTo(UT2004ItemType.SHIELD_PACK)) return true;
+        }
+        if (info.getHealth() < 80) {
+            if (navigateTo(UT2004ItemType.HEALTH_PACK)) return true;
+        }
+        return false;
+    }
+    
+    private boolean pickupNearestHealth() {
+        if (navigateTo(UT2004ItemType.HEALTH_PACK)) return true;
+        return false;
+    }
+    
+    private boolean pickupRandomItem() {
+        navigateWeapon();
+        return true;
+    }
+    
+    private boolean navigateTo(UT2004ItemType type) {
+        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType() == type) return true;
+        Item item = fwMap.getNearestItem(items.getSpawnedItems(type).values(), navPoints.getNearestNavPoint());        
+        if (item == null) {
+            log.warning("No " + type.getName() + " to run to...");
+            return false;
+        }
+        if (item.getLocation() == null) {
+            log.warning("No location " + type.getName() + " to run to...");
+            return false;
+        }
+        navigation.navigate(item);
+        bot.getBotName().setInfo("To", item.getType().getName());
+        say("To: " + item.getType().getName());
+        return true;
+    }
+    
+    private void navigateWeapon() {
+        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType().getCategory() == ItemType.Category.WEAPON) return;
+        Item item = MyCollections.getRandom(items.getSpawnedItems(ItemType.Category.WEAPON).values());        
+        if (item == null) {
+            log.warning("No weapon to run to...");
             return;
         }
-    	
-    	if (!hasLoaded(requiredWeapons))
-        {
-            Set<UT2004ItemType> missingWeapons = filterNotLoaded(requiredWeapons);
-         
-            if (info.isShooting())
-            {
-                shoot.stopShooting();
-            }
-        
-            if (collectWeapons(missingWeapons))
-            {
-                return;
-            }
-        }
+        navigation.navigate(item);
+        bot.getBotName().setInfo("To", item.getType().getName());
     }
     
-    /**
-     * Returns the nearest spawned item of 'type'.
-     * @param type
-     * @return
-     */
-    private Item getNearestSpawnedItem(UT2004ItemType type) {
-    	final NavPoint nearestNavPoint = info.getNearestNavPoint();
-    	Item nearest = DistanceUtils.getNearest(
-    			items.getSpawnedItems(type).values(), 
-    			info.getNearestNavPoint(),
-    			new DistanceUtils.IGetDistance<Item>() {
-					@Override
-					public double getDistance(Item object, ILocated target) {
-						return fwMap.getDistance(object.getNavPoint(), nearestNavPoint);
-					}
-    		
-    	});
-    	return nearest;
+    private void say(String string) {
+        body.getCommunication().sendGlobalTextMessage(string);
     }
-    
-    /**
-     * Translates 'types' to the set of "nearest spawned items" of those 'types'.
-     * @param types
-     * @return
-     */
-    private Set<Item> getNearestSpawnedItems(Collection<UT2004ItemType> types) {
-    	Set<Item> result = new HashSet<Item>();
-    	for (UT2004ItemType type : types) {
-    		Item n = getNearestSpawnedItem(type);
-    		if (n != null) {
-    			result.add(n);
-    		}
-    	}
-    	return result;
-    }
-    
-    /**
-     * Displays info tag on the bot.
-     * @param goal
-     */
-    private void debugGoal(String goal) {
-    	bot.getBotName().setInfo(goal);
-    }
-    
-    /**
-	 * BEHAVIOR - try to collect 'requiredWeapons'; start with the nearest first.
-	 * @param requiredWeapons
-	 */
-    private boolean collectWeapons(Collection<UT2004ItemType> requiredWeapons) {
-    	Set<Item> nearest = getNearestSpawnedItems(requiredWeapons);
-    	
-    	Item target = DistanceUtils.getNearest(nearest, info.getNearestNavPoint(), 
-				new DistanceUtils.IGetDistance<Item>() {
-					@Override
-					public double getDistance(final Item object, ILocated target) {
-						return fwMap.getDistance(object.getNavPoint(), info.getNearestNavPoint());
-					}			
-		});
-		if (target == null) {
-			log.severe("No item to navigate to! requiredWeapons.size() = " + requiredWeapons.size());
-			return false;
-		}
-		debugGoal("C:" + target.getType().getName() + " | " + (int)(fwMap.getDistance(target.getNavPoint(), info.getNearestNavPoint())));
-		
-		navigation.navigate(target);
-		
-		return true;
-	}
-    
-    /**
-	 * Returns weapons that the bot does not have or are not loaded.
-	 * @param requiredWeapons
-	 * @return
-	 */
-	private Set<UT2004ItemType> filterNotLoaded(UT2004ItemType[] requiredWeapons) {
-		Set<UT2004ItemType> result = new HashSet<UT2004ItemType>();
-		for (UT2004ItemType weapon : requiredWeapons) {
-    		if (!weaponry.hasPrimaryLoadedWeapon(weapon)) result.add(weapon);
-    	}
-		return result;
-	}
-    
-    /**
-     * Checks if all 'requiredWeapons' are loaded...
-     * @param requiredWeapons
-     * @return
-     */
-	private boolean hasLoaded(UT2004ItemType[] requiredWeapons) {
-    	for (UT2004ItemType weapon : requiredWeapons) {
-    		if (!weaponry.hasPrimaryLoadedWeapon(weapon)) return false;
-    	}
-		return true;
-	}
-    
-    /**
-     * Checks whether some items exists within the map ...
-     * @param requiredItems
-     * @return
-     */
-    private boolean existsInMap(UT2004ItemType[] requiredItems) {
-    	for (UT2004ItemType item : requiredItems) {
-    		if (items.getAllItems(item).size() == 0) {
-    			log.severe("Map " + game.getMapName() + " does not have any items of: " + item.getName());
-    			return false;
-    		}    		
-    	}
-		return true;
-	}
-    
+
     /**
      * Called each time our bot die. Good for reseting all bot state dependent
      * variables.
