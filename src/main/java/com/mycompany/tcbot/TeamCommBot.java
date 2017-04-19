@@ -1,36 +1,24 @@
 package com.mycompany.tcbot;
 
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.logging.Level;
 
 import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
-import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
-import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
-import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
-import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.UT2004Items;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemTypeTranslator;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.ConfigChange;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.FlagInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.InitedMessage;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPointSharedImpl;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Player;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
@@ -45,11 +33,6 @@ import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
 import cz.cuni.amis.utils.collections.MyCollections;
 import cz.cuni.amis.utils.exception.PogamutException;
-import cz.cuni.amis.utils.flag.Flag;
-import cz.cuni.amis.utils.future.FutureStatus;
-import cz.cuni.amis.utils.future.FutureWithListeners;
-import cz.cuni.amis.utils.future.IFutureListener;
-import net.sf.saxon.om.Navigator;
 
 /**
  * Example of the bot that is communicating via {@link UT2004TCServer} using Apache Mina under the belt.
@@ -190,42 +173,54 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void logic() throws PogamutException {
     	
-    	// Pick a flag
-    	if (!haveFlag())
+    	log.info("Player ID: " + myNumber);
+    	boolean stealer = myNumber % 2 == 0 ? true : false;
+    	
+    	if (stealer)
     	{
-    		return;
+    		// Pick some weapons
+    		// TODO (via distance)
+    		
+    		// Steal enemy's flag
+        	if (!haveFlag())
+        	{
+        		return;
+        	}
+        	
+        	// Take enemy's flag home
+        	// TODO
     	}
-    	
-    	// Combat
-    	if (combat())
+    	else
     	{
-    		return;
-        }
-    	
+    		// Pick some weapons
+    		// TODO (via distance)
+    		
+    		// Combat
+    		// TODO - moving in base
+    		// TODO - add control if is flag in base
+        	if (combatWithoutFlag())
+        	{
+        		return;
+            }
+    	}
+ 
+    	// If I don't need it - DELETE
         pickUpItems();
     }
     
     private boolean haveFlag()
     {
     	navigation.navigate(this.ctf.getEnemyBase());
-    	
-    	log.info("Flag info: " + this.ctf.getEnemyFlag().getState());
-    	
+
     	if (this.ctf.getEnemyFlag().getState().equals("home"))
     	{
-    		log.info("Go for the FLAG!");
     		return false;
     	}
     	
     	return true;
     }
     
-    private boolean wantToCombat()
-    {
-        return players.canSeeEnemies();
-    }
-    
-    private boolean combat()
+    private boolean combatWithoutFlag()
     {
     	if (players.canSeeEnemies())
     	{
