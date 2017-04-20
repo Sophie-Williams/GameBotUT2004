@@ -1,13 +1,19 @@
 package com.mycompany.tcbot;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 
 import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
+import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
+import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
@@ -19,6 +25,7 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.ConfigC
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInfo;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.InitedMessage;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
@@ -50,7 +57,9 @@ import cz.cuni.amis.utils.exception.PogamutException;
 @AgentScoped
 public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 
-	private static String[] names = new String[]{"Peter", "James", "Johnny", "Craig", "Jimmy", "Steve", "Ronnie", "Bobby"};
+	
+	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
+	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
 	
 	static {
 		List<String> n = MyCollections.toList(names);
@@ -58,16 +67,15 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		names = n.toArray(new String[n.size()]);
 	}
 	
-	/**
-	 * Just for the numbering of bots.
-	 */
 	private static int number = 0;
-	
 	private int myNumber;
+	private boolean stealer;
+	private Set<UT2004ItemType> missingWeapons;
 	
     @Override
     public Initialize getInitializeCommand() {
     	myNumber = ++number;
+    	stealer = myNumber % 2 == 0 ? true : false;
         return new Initialize().setName(names[(myNumber) % names.length] + (myNumber < 3 ? "-RED" : "-BLUE")).setTeam(myNumber < 3 ? AgentInfo.TEAM_RED : AgentInfo.TEAM_BLUE);
     }
 
@@ -75,6 +83,29 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     public void botInitialized(GameInfo gameInfo, ConfigChange config, InitedMessage init) {
     	bot.getLogger().getCategory("Yylex").setLevel(Level.OFF);
         tcClient.getLog().setLevel(Level.ALL);    	
+        
+        // Preferencies for guns
+        // true - primary mode
+        // false - secondary mode
+        weaponPrefs.addGeneralPref(UT2004ItemType.LIGHTNING_GUN, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.ROCKET_LAUNCHER, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
+        weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
+        
+        // settings of distances for guns, how they were call via distance
+        weaponPrefs.newPrefsRange(500).add(UT2004ItemType.FLAK_CANNON, true)
+                                      .add(UT2004ItemType.LINK_GUN, true);
+        
+        weaponPrefs.newPrefsRange(1000).add(UT2004ItemType.MINIGUN, true)
+                                       .add(UT2004ItemType.LINK_GUN, false);
+        
+        weaponPrefs.newPrefsRange(500).add(UT2004ItemType.LIGHTNING_GUN, true)
+                                      .add(UT2004ItemType.SHOCK_RIFLE, true);
     }
     
     public String toString(TCMessage tcMessage) {
@@ -169,18 +200,32 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     int msgNum = 0;
     
     int myChannelId = -1;
-
+    
     @Override
-    public void logic() throws PogamutException {
+    public void beforeFirstLogic()
+    {
+    	UT2004ItemType[] requiredWeapons = new UT2004ItemType[] {
+				UT2004ItemType.ASSAULT_RIFLE,
+				UT2004ItemType.SHIELD_GUN,
+				UT2004ItemType.LIGHTNING_GUN,
+				UT2004ItemType.SHOCK_RIFLE,
+				UT2004ItemType.MINIGUN,
+				UT2004ItemType.LINK_GUN,
+				UT2004ItemType.FLAK_CANNON,
+				UT2004ItemType.ASSAULT_RIFLE,
+				UT2004ItemType.ROCKET_LAUNCHER,
+				UT2004ItemType.SHIELD_GUN,
+				UT2004ItemType.BIO_RIFLE,
+				};
     	
-    	log.info("Player ID: " + myNumber);
-    	boolean stealer = myNumber % 2 == 0 ? true : false;
-    	
+    	missingWeapons = filterNotLoaded(requiredWeapons);
+    }
+    
+    @Override
+    public void logic() throws PogamutException
+    {	    	
     	if (stealer)
     	{
-    		// Pick some weapons
-    		// TODO (via distance)
-    		
     		// Steal enemy's flag
         	if (!haveFlag())
         	{
@@ -205,19 +250,137 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	}
  
     	// If I don't need it - DELETE
-        pickUpItems();
+        //pickUpItems();
+    }
+    
+    /**
+	 * Returns weapons that the bot does not have or are not loaded.
+	 * @param requiredWeapons
+	 * @return
+	 */
+	private Set<UT2004ItemType> filterNotLoaded(UT2004ItemType[] requiredWeapons)
+	{
+		Set<UT2004ItemType> result = new HashSet<UT2004ItemType>();
+		for (UT2004ItemType weapon : requiredWeapons)
+		{
+    		if (!weaponry.hasPrimaryLoadedWeapon(weapon))
+    		{
+    			result.add(weapon);
+    		}
+    	}
+		return result;
+	}
+    
+    private boolean pickUpItemViaDistance(Collection<UT2004ItemType> requiredWeapons)
+    {
+    	if (requiredWeapons == null)
+    	{
+    		return false;
+    	}
+    	
+    	Set<Item> nearestItems = getNearestSpawnedItems(requiredWeapons);    	
+    	Item target = DistanceUtils.getNearest(nearestItems, info.getNearestNavPoint(), 
+				new DistanceUtils.IGetDistance<Item>() {
+					@Override
+					public double getDistance(final Item object, ILocated target) {
+						return fwMap.getDistance(object.getNavPoint(), info.getNearestNavPoint());
+					}			
+		});
+    	
+    	if (target == null)
+    	{
+    		return false;
+    	}
+    	
+    	double distance = info.getLocation().getDistance(target.getLocation());  	
+    	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
+    	{
+    		navigation.navigate(target);
+    		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + target.getType().getName());
+    		return true;
+    	}
+    	
+    	return false;
+    }
+    
+    /**
+     * Translates 'types' to the set of "nearest spawned items" of those 'types'.
+     * @param types
+     * @return
+     */
+    private Set<Item> getNearestSpawnedItems(Collection<UT2004ItemType> types) {
+    	Set<Item> result = new HashSet<Item>();
+    	for (UT2004ItemType type : types) {
+    		Item n = getNearestSpawnedItem(type);
+    		if (n != null) {
+    			result.add(n);
+    		}
+    	}
+    	return result;
+    }
+    
+    /**
+     * Returns the nearest spawned item of 'type'.
+     * @param type
+     * @return
+     */
+    private Item getNearestSpawnedItem(UT2004ItemType type) {
+    	final NavPoint nearestNavPoint = info.getNearestNavPoint();
+    	Item nearest = DistanceUtils.getNearest(
+    			items.getSpawnedItems(type).values(), 
+    			info.getNearestNavPoint(),
+    			new DistanceUtils.IGetDistance<Item>() {
+					@Override
+					public double getDistance(Item object, ILocated target) {
+						return fwMap.getDistance(object.getNavPoint(), nearestNavPoint);
+					}
+    		
+    	});
+    	return nearest;
     }
     
     private boolean haveFlag()
     {
-    	navigation.navigate(this.ctf.getEnemyBase());
+    	// Combat with getting for FLAG
+    	if (combatWithFlag())
+    	{
+    		// TODO - BOT shooting on nearest visible enemy
+    	}
 
+    	// Search ITEMs in BOT's near distance
+    	pickUpItemViaDistance(missingWeapons);
+    	
+    	// BOT sees required ITEM which is near to him
+    	// BOT goes for this ITEM
+    	if (navigation.isNavigating() && navigation.isNavigatingToItem())
+    	{
+    		log.info("JDU K ITEMU!!!");
+    		return false;
+    	}
+    	
+    	// Navigation to enemy base for FLAG
+    	navigation.navigate(this.ctf.getEnemyBase());
+    	// If is FLAG stealing, continue in algorithm, in otherwise stop and return TRUE
     	if (this.ctf.getEnemyFlag().getState().equals("home"))
     	{
     		return false;
     	}
     	
     	return true;
+    }
+    
+    private boolean combatWithFlag()
+    {
+    	if (players.canSeeEnemies())
+    	{
+    		shoot.shoot(players.getNearestVisibleEnemy());
+    		return true;
+    	}
+    	else
+    	{
+    		shoot.stopShooting();
+    		return false;
+    	}
     }
     
     private boolean combatWithoutFlag()
@@ -389,6 +552,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	 tcServer = UT2004TCServer.startTCServer();
     	
     	// Starts 3 bot
-        new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(3);       
+        new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(6);       
     }
 }
