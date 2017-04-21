@@ -258,10 +258,19 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         	{
         		runForFlag();
         	}
+        	else if (ctf.getEnemyFlag().getHolder() == info.getId())
+        	{
+        		returnHome();
+        	}
+        	else if(ctf.isBotCarryingEnemyFlag())
+        	{
+        		// TODO - somebody from our team has flag - this bot isn't it
+        	}
         	else
         	{
-        		returnHome();        		
+        		// TODO - don't know
         	}
+        	
     	}
     	else
     	{
@@ -433,7 +442,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     {
     	if (players.canSeeEnemies())
     	{
-    		shoot.shoot(players.getNearestVisibleEnemy());
+    		shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
     		return true;
     	}
     	else
@@ -450,7 +459,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
             // navigation to nearest visible enemy
             navigation.navigate(players.getNearestVisibleEnemy());
             // shooting on nearest visible enemy
-            shoot.shoot(players.getNearestVisibleEnemy());
+            shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
             
             return true;
     	}
