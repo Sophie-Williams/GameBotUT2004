@@ -57,6 +57,17 @@ import cz.cuni.amis.utils.exception.PogamutException;
 @AgentScoped
 public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 
+	// Do I use cover path?
+    private boolean usingCoverPath = false;
+    
+    // Target navigation point of bot way
+    private NavPoint targetNavPoint = null;
+    
+    // Must I use cover path? (properties settings)
+    private boolean useCoverPath = false;
+    
+    // Next navigation point for navigate
+    private NavPoint runningToNavPoint = null;
 	
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
 	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
@@ -71,6 +82,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	private int myNumber;
 	private boolean stealer;
 	private Set<UT2004ItemType> missingWeapons;
+	private ItemType requiredWeapon;
+	private NavPoint enemyBase;
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -104,7 +117,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         weaponPrefs.newPrefsRange(1000).add(UT2004ItemType.MINIGUN, true)
                                        .add(UT2004ItemType.LINK_GUN, false);
         
-        weaponPrefs.newPrefsRange(500).add(UT2004ItemType.LIGHTNING_GUN, true)
+        weaponPrefs.newPrefsRange(5000).add(UT2004ItemType.LIGHTNING_GUN, true)
                                       .add(UT2004ItemType.SHOCK_RIFLE, true);
     }
     
@@ -219,21 +232,36 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 				};
     	
     	missingWeapons = filterNotLoaded(requiredWeapons);
+    	
+    	enemyBase = this.ctf.getEnemyBase();
     }
     
     @Override
     public void logic() throws PogamutException
-    {	    	
+    {	    
+    	/*if (!visibility.isInitialized())
+        {
+    		log.warning("Missing visibility information for the map: " + game.getMapName());
+    		body.getCommunication().sendGlobalTextMessage("Missing visibility information for this map!");
+    		return;
+    	}*/
+    	
+    	if (enemyBase == null)
+    	{
+    		enemyBase = this.ctf.getEnemyBase();
+    		return;
+    	}
+    	
     	if (stealer)
     	{
-    		// Steal enemy's flag
-        	if (!haveFlag())
+        	if (ctf.isEnemyFlagHome())
         	{
-        		return;
+        		runForFlag();
         	}
-        	
-        	// Take enemy's flag home
-        	// TODO
+        	else
+        	{
+        		returnHome();        		
+        	}
     	}
     	else
     	{
@@ -243,7 +271,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		// Combat
     		// TODO - moving in base
     		// TODO - add control if is flag in base
-        	if (combatWithoutFlag())
+        	if (combatDefender())
         	{
         		return;
             }
@@ -295,7 +323,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	double distance = info.getLocation().getDistance(target.getLocation());  	
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
-    		navigation.navigate(target);
+    		navigation.navigate(target.getNavPoint());
+    		requiredWeapon = target.getType();
     		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + target.getType().getName());
     		return true;
     	}
@@ -339,12 +368,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return nearest;
     }
     
-    private boolean haveFlag()
+    private boolean runForFlag()
     {
     	// Combat with getting for FLAG
-    	if (combatWithFlag())
+    	if (combatStealer())
     	{
-    		// TODO - BOT shooting on nearest visible enemy
+    		log.info("Bot with FLAG is shooting on nearest enemy ... ");
     	}
 
     	// Search ITEMs in BOT's near distance
@@ -352,14 +381,32 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	
     	// BOT sees required ITEM which is near to him
     	// BOT goes for this ITEM
-    	if (navigation.isNavigating() && navigation.isNavigatingToItem())
+    	if (navigation.isNavigatingToItem())
     	{
-    		log.info("JDU K ITEMU!!!");
+    		// Go for ITEM
+    		log.info("Go for ITEM!");
     		return false;
+    	}
+    	else if (navigation.isNavigatingToNavPoint())
+    	{
+    		// Go for GLAG
+    		log.info("Go for FLAG!");
+    	}
+    	else
+    	{
+    		// Pick up ITEM and go for FLAG in next run
+    		if (requiredWeapon != null)
+    		{
+    			if (missingWeapons.remove(requiredWeapon))
+    			{
+    				log.info("Removed ITEM from missing weapons!");
+    			}
+    		}
     	}
     	
     	// Navigation to enemy base for FLAG
-    	navigation.navigate(this.ctf.getEnemyBase());
+    	stealFlag();    		
+    	
     	// If is FLAG stealing, continue in algorithm, in otherwise stop and return TRUE
     	if (this.ctf.getEnemyFlag().getState().equals("home"))
     	{
@@ -369,7 +416,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return true;
     }
     
-    private boolean combatWithFlag()
+    private boolean stealFlag()
+    {
+    	navigation.navigate(ctf.getEnemyBase());
+    	return true;
+    }
+    
+    private boolean returnHome()
+    {
+    	combatStealer();
+        navigation.navigate(ctf.getOurBase());
+        return true;
+    }
+    
+    private boolean combatStealer()
     {
     	if (players.canSeeEnemies())
     	{
@@ -383,14 +443,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	}
     }
     
-    private boolean combatWithoutFlag()
+    private boolean combatDefender()
     {
     	if (players.canSeeEnemies())
     	{
-    		// INFO
-            bot.getBotName().setInfo("CMB");
-            bot.getBotName().deleteInfo("To");
-            
             // navigation to nearest visible enemy
             navigation.navigate(players.getNearestVisibleEnemy());
             // shooting on nearest visible enemy
