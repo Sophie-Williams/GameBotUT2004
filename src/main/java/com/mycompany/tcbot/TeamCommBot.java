@@ -1,6 +1,5 @@
 package com.mycompany.tcbot;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -82,8 +81,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	private int myNumber;
 	private boolean stealer;
 	private Set<UT2004ItemType> missingWeapons;
-	private ItemType requiredWeapon;
-	private NavPoint enemyBase;
+	private UT2004ItemType[] requiredWeapons;
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -217,7 +215,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void beforeFirstLogic()
     {
-    	UT2004ItemType[] requiredWeapons = new UT2004ItemType[] {
+    	requiredWeapons = new UT2004ItemType[] {
 				UT2004ItemType.ASSAULT_RIFLE,
 				UT2004ItemType.SHIELD_GUN,
 				UT2004ItemType.LIGHTNING_GUN,
@@ -231,9 +229,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 				UT2004ItemType.BIO_RIFLE,
 				};
     	
-    	missingWeapons = filterNotLoaded(requiredWeapons);
-    	
-    	enemyBase = this.ctf.getEnemyBase();
+    	missingWeapons = filterNotLoaded(requiredWeapons);  	
     }
     
     @Override
@@ -245,12 +241,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		body.getCommunication().sendGlobalTextMessage("Missing visibility information for this map!");
     		return;
     	}*/
-    	
-    	if (enemyBase == null)
-    	{
-    		enemyBase = this.ctf.getEnemyBase();
-    		return;
-    	}
+
     	
     	if (stealer)
     	{
@@ -333,7 +324,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
     		navigation.navigate(target.getNavPoint());
-    		requiredWeapon = target.getType();
     		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + target.getType().getName());
     		return true;
     	}
@@ -379,7 +369,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private boolean runForFlag()
     {
-    	// Combat with getting for FLAG
+    	// Combat via STEALER
     	if (combatStealer())
     	{
     		log.info("Bot with FLAG is shooting on nearest enemy ... ");
@@ -387,30 +377,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 
     	// Search ITEMs in BOT's near distance
     	pickUpItemViaDistance(missingWeapons);
-    	
-    	// BOT sees required ITEM which is near to him
-    	// BOT goes for this ITEM
+
     	if (navigation.isNavigatingToItem())
     	{
-    		// Go for ITEM
     		log.info("Go for ITEM!");
     		return false;
     	}
     	else if (navigation.isNavigatingToNavPoint())
     	{
-    		// Go for GLAG
     		log.info("Go for FLAG!");
     	}
     	else
     	{
     		// Pick up ITEM and go for FLAG in next run
-    		if (requiredWeapon != null)
-    		{
-    			if (missingWeapons.remove(requiredWeapon))
-    			{
-    				log.info("Removed ITEM from missing weapons!");
-    			}
-    		}
+    		missingWeapons = filterNotLoaded(requiredWeapons);
     	}
     	
     	// Navigation to enemy base for FLAG
