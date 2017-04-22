@@ -13,6 +13,7 @@ import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.Eve
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
 import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
@@ -57,16 +58,16 @@ import cz.cuni.amis.utils.exception.PogamutException;
 public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 
 	// Do I use cover path?
-    private boolean usingCoverPath = false;
+    //private boolean usingCoverPath = false;
     
     // Target navigation point of bot way
-    private NavPoint targetNavPoint = null;
+    private Location targetNavPoint = null;
     
     // Must I use cover path? (properties settings)
-    private boolean useCoverPath = false;
+    //private boolean useCoverPath = false;
     
     // Next navigation point for navigate
-    private NavPoint runningToNavPoint = null;
+    //private NavPoint runningToNavPoint = null;
 	
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
 	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
@@ -242,7 +243,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		return;
     	}*/
 
-    	
     	if (stealer)
     	{
         	if (ctf.isEnemyFlagHome())
@@ -255,14 +255,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         	}
         	else if(ctf.isBotCarryingEnemyFlag())
         	{
-        		// TODO - somebody from our team has flag - this bot isn't it
+        		// TODO - after communication run to BOT with FALG
         	}
         	else
         	{
-        		// TODO - don't know
+        		// TODO - don't know what happen
         	}
         	
-        	navigation.navigate(targetNavPoint);
+        	navigate(targetNavPoint);
     	}
     	else
     	{
@@ -272,14 +272,26 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		// Combat
     		// TODO - moving in base
     		// TODO - add control if is flag in base
-        	if (combatDefender())
-        	{
-        		return;
-            }
+        	
+    		if (ctf.isOurFlagHome())
+    		{
+    			pickupSomeWeapon();
+    			combatDefender(ctf.getOurBase());
+    		}
+    		else if (ctf.isOurFlagHeld() || ctf.isOurFlagDropped())
+    		{
+    			combatDefender(ctf.getEnemyBase());
+    		}
+    		else
+    		{
+    			// TODO - don't know what happen
+    		}
+    		
+    		navigate(targetNavPoint);
     	}
  
-    	// If I don't need it - DELETE
-        //pickUpItems();
+    	navigation.navigate(targetNavPoint);
+    	missingWeapons = filterNotLoaded(requiredWeapons);
     }
     
     /**
@@ -300,32 +312,36 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		return result;
 	}
     
-    private boolean pickUpItemViaDistance(Collection<UT2004ItemType> requiredWeapons)
+    private boolean pickUpItemViaDistance(Collection<UT2004ItemType> requiredWeaponsColl)
     {
     	if (requiredWeapons == null)
     	{
     		return false;
     	}
+
+    	double distance = Double.MAX_VALUE;
+    	Item item = info.getNearestVisibleItem();
     	
-    	Set<Item> nearestItems = getNearestSpawnedItems(requiredWeapons);    	
-    	Item target = DistanceUtils.getNearest(nearestItems, info.getNearestNavPoint(), 
-				new DistanceUtils.IGetDistance<Item>() {
-					@Override
-					public double getDistance(final Item object, ILocated target) {
-						return fwMap.getDistance(object.getNavPoint(), info.getNearestNavPoint());
-					}			
-		});
-    	
-    	if (target == null)
+    	if (item != null && item.getNavPoint() != null && info.getNearestNavPoint() != null)
     	{
-    		return false;
+    		distance = fwMap.getDistance(item.getNavPoint(), info.getNearestNavPoint());
     	}
-    	
-    	double distance = info.getLocation().getDistance(target.getLocation());  	
+    	  	
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
-    		navigation.navigate(target.getNavPoint());
-    		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + target.getType().getName());
+    		int origCount = missingWeapons.size(), newCount;
+    		
+    		navigate(info.getNearestVisibleItem());
+    		missingWeapons = filterNotLoaded(requiredWeapons);
+    		
+    		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + info.getNearestVisibleItem().getType().getName());
+
+    		newCount = missingWeapons.size();
+    		if (origCount != newCount)
+    		{
+    			log.info("Picking up some WEAPON!");
+    		}
+    		
     		return true;
     	}
     	
@@ -374,33 +390,28 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	combatStealer();
     	
     	// Search ITEMs in BOT's near distance
-    	pickUpItemViaDistance(missingWeapons);
-
-    	if (navigation.isNavigatingToItem())
+    	if (pickUpItemViaDistance(missingWeapons))
     	{
-    		log.info("Go for ITEM!");
     		return;
     	}
-    	else if (navigation.isNavigatingToNavPoint())
+    	
+    	// BOT needs urgent pick up health
+    	if (needHealthUrgent())
     	{
-    		log.info("Go for FLAG!");
-    	}
-    	else
-    	{
-    		// Pick up ITEM and go for FLAG in next run
-    		missingWeapons = filterNotLoaded(requiredWeapons);
-    		log.info("Pick up some WEAPON!");
+    		if (pickupNearestHealth())
+    		{
+    			return;
+    		}
     	}
     	
     	// Navigation to enemy base for FLAG
-    	targetNavPoint = ctf.getEnemyBase();    		
-
+    	navigate(ctf.getEnemyBase());
     }
     
     private boolean returnHome()
     {
     	combatStealer();
-    	targetNavPoint = ctf.getOurBase();
+    	navigate(ctf.getOurBase());
     	
         return true;
     }
@@ -418,12 +429,37 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	}
     }
     
-    private boolean combatDefender()
+    private void navigate(NavPoint target)
+    {
+    	/*runningToNavPoint = target;
+        if (useCoverPath)
+        {
+            navigateCoverPath(target);
+        }
+        else
+        {
+            navigateStandard(target);
+        }*/
+        
+        navigate(target.getLocation());
+    }
+    
+    private void navigate(Location location)
+    {
+    	targetNavPoint = location;
+    }
+    
+    private void navigate(Item item)
+    {
+    	navigate(item.getLocation());
+    }
+    
+    private boolean combatDefender(NavPoint target)
     {
     	if (players.canSeeEnemies())
     	{
             // navigation to nearest visible enemy
-            navigation.navigate(players.getNearestVisibleEnemy());
+            navigate(players.getNearestVisibleEnemy().getLocation());
             // shooting on nearest visible enemy
             shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
             
@@ -432,107 +468,107 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	else if (!players.canSeeEnemies() && info.isShooting())
     	{
     		shoot.stopShooting();
+    		navigate(target);
     		
     		return false;
     	}
     	else
     	{
+    		pickupSomeWeapon();
+    		
     		return false;
     	}
     }
     
-    private boolean pickUpItems()
+    private boolean needHealthUrgent()
     {
-    	// INFO
-        bot.getBotName().setInfo("PUI");
-        
-        // if need HEALTH - pick up it
-        if (needHealthUrgent())
-        {
-        	if (pickupNearestHealth()) return true;        	
-        }
-        
-        // if need WEAPON - pick up it
-        if (pickupSomeWeapon())
-        {
-        	return true;
-        }
-        
-        // if need GOOD WEAPON - pick up it
-        if (pickupGoodItem())
-        {
-        	return true;
-        }
-        
-        // pick up RANDOM WEAPON
-        pickupRandomItem();
-        
-        return true;
-    }
-    
-    private boolean needHealthUrgent() {
         return info.getHealth() < 20 || (info.getHealth() + info.getArmor()) < 40;
     }
     
-    private boolean pickupSomeWeapon() {
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.SHOCK_RIFLE)) {
-            if (navigateTo(UT2004ItemType.SHOCK_RIFLE)) return true;
+    private boolean pickupSomeWeapon()
+    {
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.SHOCK_RIFLE))
+        {
+            if (navigateToItemType(UT2004ItemType.SHOCK_RIFLE))
+            {
+            	return true;
+            }
         }
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.MINIGUN)) {
-            if (navigateTo(UT2004ItemType.MINIGUN)) return true;
+        
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.MINIGUN))
+        {
+            if (navigateToItemType(UT2004ItemType.MINIGUN))
+            {
+            	return true;
+            }
         }
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN)) {
-            if (navigateTo(UT2004ItemType.LINK_GUN)) return true;
+        
+        if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN))
+        {
+            if (navigateToItemType(UT2004ItemType.LINK_GUN))
+            {
+            	return true;
+            }
         }
+        
         return false;
     }
     
-    private boolean pickupGoodItem() {
-        if (items.getSpawnedItems(UT2004ItemType.SHIELD_PACK).size() > 0) {
-            if (navigateTo(UT2004ItemType.SHIELD_PACK)) return true;
+    private boolean pickupGoodItem()
+    {
+        if (items.getSpawnedItems(UT2004ItemType.SHIELD_PACK).size() > 0)
+        {
+            if (navigateToItemType(UT2004ItemType.SHIELD_PACK))
+            {
+            	return true;
+            }
         }
-        if (info.getHealth() < 80) {
-            if (navigateTo(UT2004ItemType.HEALTH_PACK)) return true;
+        
+        if (info.getHealth() < 80)
+        {
+            if (navigateToItemType(UT2004ItemType.HEALTH_PACK))
+            {
+            	return true;
+            }
         }
+        
         return false;
     }
     
-    private boolean pickupNearestHealth() {
-        if (navigateTo(UT2004ItemType.HEALTH_PACK)) return true;
+    private boolean pickupNearestHealth()
+    {
+        if (navigateToItemType(UT2004ItemType.HEALTH_PACK))
+        {
+        	return true;
+        }
+        
         return false;
     }
     
-    private boolean pickupRandomItem() {
-        navigateWeapon();
-        return true;
-    }
-    
-    private boolean navigateTo(UT2004ItemType type) {
-        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType() == type) return true;
+    private boolean navigateToItemType(UT2004ItemType type)
+    {
+        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType() == type)
+        {
+        	return true;
+        }
+        
         Item item = fwMap.getNearestItem(items.getSpawnedItems(type).values(), navPoints.getNearestNavPoint());        
-        if (item == null) {
+        
+        if (item == null)
+        {
             log.warning("No " + type.getName() + " to run to...");
             return false;
         }
-        if (item.getLocation() == null) {
+        
+        if (item.getLocation() == null)
+        {
             log.warning("No location " + type.getName() + " to run to...");
             return false;
         }
-        navigation.navigate(item);
-        bot.getBotName().setInfo("To", item.getType().getName());
-        say("To: " + item.getType().getName());
+        
+        navigate(item);
+        
         return true;
-    }
-    
-    private void navigateWeapon() {
-        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType().getCategory() == ItemType.Category.WEAPON) return;
-        Item item = MyCollections.getRandom(items.getSpawnedItems(ItemType.Category.WEAPON).values());        
-        if (item == null) {
-            log.warning("No weapon to run to...");
-            return;
-        }
-        navigation.navigate(item);
-        bot.getBotName().setInfo("To", item.getType().getName());
     }
     
     private void say(String string) {
