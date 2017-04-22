@@ -262,6 +262,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         		// TODO - don't know
         	}
         	
+        	navigation.navigate(targetNavPoint);
     	}
     	else
     	{
@@ -367,21 +368,18 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return nearest;
     }
     
-    private boolean runForFlag()
+    private void runForFlag()
     {
     	// Combat via STEALER
-    	if (combatStealer())
-    	{
-    		log.info("Bot with FLAG is shooting on nearest enemy ... ");
-    	}
-
+    	combatStealer();
+    	
     	// Search ITEMs in BOT's near distance
     	pickUpItemViaDistance(missingWeapons);
 
     	if (navigation.isNavigatingToItem())
     	{
     		log.info("Go for ITEM!");
-    		return false;
+    		return;
     	}
     	else if (navigation.isNavigatingToNavPoint())
     	{
@@ -391,44 +389,32 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	{
     		// Pick up ITEM and go for FLAG in next run
     		missingWeapons = filterNotLoaded(requiredWeapons);
+    		log.info("Pick up some WEAPON!");
     	}
     	
     	// Navigation to enemy base for FLAG
-    	stealFlag();    		
-    	
-    	// If is FLAG stealing, continue in algorithm, in otherwise stop and return TRUE
-    	if (this.ctf.getEnemyFlag().getState().equals("home"))
-    	{
-    		return false;
-    	}
-    	
-    	return true;
-    }
-    
-    private boolean stealFlag()
-    {
-    	navigation.navigate(ctf.getEnemyBase());
-    	return true;
+    	targetNavPoint = ctf.getEnemyBase();    		
+
     }
     
     private boolean returnHome()
     {
     	combatStealer();
-        navigation.navigate(ctf.getOurBase());
+    	targetNavPoint = ctf.getOurBase();
+    	
         return true;
     }
     
-    private boolean combatStealer()
+    private void combatStealer()
     {
     	if (players.canSeeEnemies())
     	{
     		shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
-    		return true;
     	}
-    	else
+
+    	if (!players.canSeeEnemies() && info.isShooting())
     	{
     		shoot.stopShooting();
-    		return false;
     	}
     }
     
