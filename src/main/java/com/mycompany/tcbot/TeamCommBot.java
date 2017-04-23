@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 
+import cz.cuni.amis.pogamut.base.agent.state.impl.AgentState;
 import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
@@ -16,6 +17,7 @@ import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
+import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentStats;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
@@ -101,23 +103,39 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         // false - secondary mode
         weaponPrefs.addGeneralPref(UT2004ItemType.LIGHTNING_GUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, true);
-        weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, true);
-        weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, false);
+        weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.ROCKET_LAUNCHER, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
         
-        // settings of distances for guns, how they were call via distance
-        weaponPrefs.newPrefsRange(500).add(UT2004ItemType.FLAK_CANNON, true)
-                                      .add(UT2004ItemType.LINK_GUN, true);
-        
-        weaponPrefs.newPrefsRange(1000).add(UT2004ItemType.MINIGUN, true)
-                                       .add(UT2004ItemType.LINK_GUN, false);
-        
-        weaponPrefs.newPrefsRange(5000).add(UT2004ItemType.LIGHTNING_GUN, true)
-                                      .add(UT2004ItemType.SHOCK_RIFLE, true);
+        weaponPrefs.newPrefsRange(80)
+        .add(UT2004ItemType.SHIELD_GUN, true);
+		// Only one weapon is added to this close combat range and it is SHIELD GUN		
+			
+		// Second range class is from 80 to 1000 ut units (its always from the previous class to the maximum
+		// distance of actual class
+		weaponPrefs.newPrefsRange(1000)
+		        .add(UT2004ItemType.FLAK_CANNON, true)
+		        .add(UT2004ItemType.MINIGUN, true)
+		        .add(UT2004ItemType.LINK_GUN, false)
+		        .add(UT2004ItemType.ASSAULT_RIFLE, true);        
+		// More weapons are in this class with FLAK CANNON having the top priority		
+				
+		// Third range class is from 1000 to 4000 ut units - that's quite far actually
+		weaponPrefs.newPrefsRange(4000)
+		        .add(UT2004ItemType.SHOCK_RIFLE, true)
+		        .add(UT2004ItemType.MINIGUN, false);
+		// Two weapons here with SHOCK RIFLE being the top
+				
+		// The last range class is from 4000 to 100000 ut units. In practise 100000 is
+		// the same as infinity as there is no map in UT that big
+		weaponPrefs.newPrefsRange(100000)
+		        .add(UT2004ItemType.LIGHTNING_GUN, true)
+		        .add(UT2004ItemType.SHOCK_RIFLE, true);  	  
+		// Only two weapons here, both good at sniping
     }
     
     public String toString(TCMessage tcMessage) {
@@ -236,6 +254,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void logic() throws PogamutException
     {	    
+    	
+    	
     	/*if (!visibility.isInitialized())
         {
     		log.warning("Missing visibility information for the map: " + game.getMapName());
@@ -243,6 +263,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		return;
     	}*/
 
+    	// ********** CODE FOR STEALER
     	if (stealer)
     	{
         	if (ctf.isEnemyFlagHome())
@@ -264,7 +285,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         	
         	navigate(targetNavPoint);
     	}
-    	else
+    	// ********** CODE FOR DEFENDER
+    	/*else
     	{
     		if (ctf.isOurFlagHome())
     		{
@@ -281,9 +303,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		}
     		
     		navigate(targetNavPoint);
-    	}
+    	}*/
  
     	navigation.navigate(targetNavPoint);
+    	info.atLocation(targetNavPoint, 30);
     	missingWeapons = filterNotLoaded(requiredWeapons);
     }
     
@@ -305,6 +328,48 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		return result;
 	}
     
+	private boolean shooting()
+	{
+		if (players.canSeeEnemies())
+    	{
+			// SHOCK_RIFLE or LIGHTNING_GUN shooting ...
+			if (info.getCurrentWeaponType().equals(UT2004ItemType.SHOCK_RIFLE)
+					|| info.getCurrentWeaponType().equals(UT2004ItemType.LIGHTNING_GUN))
+			{
+				if (navigation.isNavigating())
+				{
+					navigation.stopNavigation();
+				}
+
+				if (!navigation.isNavigating())
+				{
+					move.turnTo(players.getNearestVisibleEnemy());
+					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
+					navigation.navigate(targetNavPoint);	
+				}
+			}
+			else
+			{
+				// Another weapon shooting
+				move.setWalk();
+				move.turnTo(players.getNearestVisibleEnemy());
+				shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
+			}
+			
+			return true;
+    	}
+
+    	if (!players.canSeeEnemies() && info.isShooting())
+    	{
+    		shoot.stopShooting();
+    		move.setRun();
+    		
+    		return false;
+    	}
+    	
+    	return false;
+	}
+	
     private boolean pickUpItemViaDistance(Collection<UT2004ItemType> requiredWeaponsColl)
     {
     	if (requiredWeapons == null)
@@ -315,24 +380,23 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	double distance = Double.MAX_VALUE;
     	Item item = info.getNearestVisibleItem();
     	
-    	if (item != null && item.getNavPoint() != null && info.getNearestNavPoint() != null)
+    	if (item != null && item.getNavPoint() != null)
     	{
-    		distance = fwMap.getDistance(item.getNavPoint(), info.getNearestNavPoint());
+    		distance = info.getDistance(item.getNavPoint().getLocation());
     	}
     	  	
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
-    		int origCount = missingWeapons.size(), newCount;
-    		
-    		navigate(info.getNearestVisibleItem());
-    		missingWeapons = filterNotLoaded(requiredWeapons);
-    		
     		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + info.getNearestVisibleItem().getType().getName());
-
-    		newCount = missingWeapons.size();
-    		if (origCount != newCount)
+    		
+    		if (item.getType().equals(senses.getItemPickedUp().getType()))
     		{
     			log.info("Picking up some WEAPON!");
+    			navigate(ctf.getEnemyBase());
+    		}
+    		else
+    		{
+    			navigate(info.getNearestVisibleItem());
     		}
     		
     		return true;
@@ -411,14 +475,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private void combatStealer()
     {
-    	if (players.canSeeEnemies())
+    	// Bot where damaged
+    	//senses.isShot();
+    	
+    	// Bot is hearing noise
+    	//senses.isHearingNoise();
+    	
+    	if (shooting())
     	{
-    		shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
+    		// TODO - bot is shooting ...
+    		// turn around and shoot to nearest enemy
     	}
-
-    	if (!players.canSeeEnemies() && info.isShooting())
+    	else
     	{
-    		shoot.stopShooting();
+    		// TODO - bot is not shooting ...
     	}
     }
     
