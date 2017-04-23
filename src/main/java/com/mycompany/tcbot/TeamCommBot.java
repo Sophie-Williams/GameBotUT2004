@@ -266,13 +266,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	}
     	else
     	{
-    		// Pick some weapons
-    		// TODO (via distance)
-    		
-    		// Combat
-    		// TODO - moving in base
-    		// TODO - add control if is flag in base
-        	
     		if (ctf.isOurFlagHome())
     		{
     			pickupSomeWeapon();
