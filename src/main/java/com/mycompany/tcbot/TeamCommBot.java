@@ -266,6 +266,23 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
+    		// Bot where damaged
+        	//senses.isShot();
+        	
+        	// Bot is hearing noise
+        	//senses.isHearingNoise();
+        	
+        	if (shooting())
+        	{
+        		// TODO - bot is shooting ...
+        		// turn around and shoot to nearest enemy
+        		return;
+        	}
+        	else
+        	{
+        		// TODO - bot is not shooting ...
+        	}
+    		
         	if (ctf.isEnemyFlagHome())
         	{
         		runForFlag();
@@ -352,7 +369,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 			{
 				// Another weapon shooting
 				move.setWalk();
-				move.turnTo(players.getNearestVisibleEnemy());
+				navigation.setFocus(players.getNearestVisibleEnemy());
 				shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
 			}
 			
@@ -471,25 +488,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	navigate(ctf.getOurBase());
     	
         return true;
-    }
-    
-    private void combatStealer()
-    {
-    	// Bot where damaged
-    	//senses.isShot();
-    	
-    	// Bot is hearing noise
-    	//senses.isHearingNoise();
-    	
-    	if (shooting())
-    	{
-    		// TODO - bot is shooting ...
-    		// turn around and shoot to nearest enemy
-    	}
-    	else
-    	{
-    		// TODO - bot is not shooting ...
-    	}
     }
     
     private void navigate(NavPoint target)
