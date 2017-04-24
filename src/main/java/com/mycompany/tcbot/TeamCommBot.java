@@ -83,8 +83,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	private static int number = 0;
 	private int myNumber;
 	private boolean stealer;
-	private Set<UT2004ItemType> missingWeapons;
-	private UT2004ItemType[] requiredWeapons;
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -111,13 +109,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
         
-        weaponPrefs.newPrefsRange(80)
+        weaponPrefs.newPrefsRange(50)
         .add(UT2004ItemType.SHIELD_GUN, true);
 		// Only one weapon is added to this close combat range and it is SHIELD GUN		
 			
 		// Second range class is from 80 to 1000 ut units (its always from the previous class to the maximum
 		// distance of actual class
-		weaponPrefs.newPrefsRange(1000)
+		weaponPrefs.newPrefsRange(500)
 		        .add(UT2004ItemType.FLAK_CANNON, true)
 		        .add(UT2004ItemType.MINIGUN, true)
 		        .add(UT2004ItemType.LINK_GUN, false)
@@ -125,14 +123,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		// More weapons are in this class with FLAK CANNON having the top priority		
 				
 		// Third range class is from 1000 to 4000 ut units - that's quite far actually
-		weaponPrefs.newPrefsRange(4000)
+		weaponPrefs.newPrefsRange(2000)
 		        .add(UT2004ItemType.SHOCK_RIFLE, true)
 		        .add(UT2004ItemType.MINIGUN, false);
 		// Two weapons here with SHOCK RIFLE being the top
 				
 		// The last range class is from 4000 to 100000 ut units. In practise 100000 is
 		// the same as infinity as there is no map in UT that big
-		weaponPrefs.newPrefsRange(100000)
+		weaponPrefs.newPrefsRange(50000)
 		        .add(UT2004ItemType.LIGHTNING_GUN, true)
 		        .add(UT2004ItemType.SHOCK_RIFLE, true);  	  
 		// Only two weapons here, both good at sniping
@@ -234,21 +232,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void beforeFirstLogic()
     {
-    	requiredWeapons = new UT2004ItemType[] {
-				UT2004ItemType.ASSAULT_RIFLE,
-				UT2004ItemType.SHIELD_GUN,
-				UT2004ItemType.LIGHTNING_GUN,
-				UT2004ItemType.SHOCK_RIFLE,
-				UT2004ItemType.MINIGUN,
-				UT2004ItemType.LINK_GUN,
-				UT2004ItemType.FLAK_CANNON,
-				UT2004ItemType.ASSAULT_RIFLE,
-				UT2004ItemType.ROCKET_LAUNCHER,
-				UT2004ItemType.SHIELD_GUN,
-				UT2004ItemType.BIO_RIFLE,
-				};
-    	
-    	missingWeapons = filterNotLoaded(requiredWeapons);  	
+    	// TODO - run before first logic  	
     }
     
     @Override
@@ -267,20 +251,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	if (stealer)
     	{
     		// Bot where damaged
-        	//senses.isShot();
+    		if (senses.isShot())
+    		{
+    			log.info("Bot where damaged ...");
+    		}
         	
         	// Bot is hearing noise
-        	//senses.isHearingNoise();
+    		if (senses.isHearingNoise())
+    		{
+    			log.info("Bot is hearing noise ...");
+    		}
         	
-        	if (shooting())
+        	if (combatStealer())
         	{
-        		// TODO - bot is shooting ...
-        		// turn around and shoot to nearest enemy
         		return;
-        	}
-        	else
-        	{
-        		// TODO - bot is not shooting ...
         	}
     		
         	if (ctf.isEnemyFlagHome())
@@ -303,7 +287,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         	navigate(targetNavPoint);
     	}
     	// ********** CODE FOR DEFENDER
-    	/*else
+    	else
     	{
     		if (ctf.isOurFlagHome())
     		{
@@ -320,11 +304,25 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		}
     		
     		navigate(targetNavPoint);
-    	}*/
+    	}
  
     	navigation.navigate(targetNavPoint);
     	info.atLocation(targetNavPoint, 30);
-    	missingWeapons = filterNotLoaded(requiredWeapons);
+    }
+    
+    private boolean combatStealer()
+    {
+    	if (shooting())
+    	{
+    		// TODO - bot is shooting ...
+    		// turn around and shoot to nearest enemy
+    		return true;
+    	}
+    	else
+    	{
+    		// TODO - bot is not shooting ...
+    		return false;
+    	}
     }
     
     /**
@@ -387,17 +385,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return false;
 	}
 	
-    private boolean pickUpItemViaDistance(Collection<UT2004ItemType> requiredWeaponsColl)
+    private boolean pickUpItemViaDistance()
     {
-    	if (requiredWeapons == null)
-    	{
-    		return false;
-    	}
-
     	double distance = Double.MAX_VALUE;
     	Item item = info.getNearestVisibleItem();
     	
-    	if (item != null && item.getNavPoint() != null)
+    	if (item != null
+    			&& item.getNavPoint() != null
+    			&& !weaponry.hasLoadedWeapon(item.getType()))
     	{
     		distance = info.getDistance(item.getNavPoint().getLocation());
     	}
@@ -405,16 +400,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
     		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + info.getNearestVisibleItem().getType().getName());
-    		
-    		if (item.getType().equals(senses.getItemPickedUp().getType()))
-    		{
-    			log.info("Picking up some WEAPON!");
-    			navigate(ctf.getEnemyBase());
-    		}
-    		else
-    		{
-    			navigate(info.getNearestVisibleItem());
-    		}
+    		navigate(info.getNearestVisibleItem());
     		
     		return true;
     	}
@@ -460,11 +446,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private void runForFlag()
     {
-    	// Combat via STEALER
-    	combatStealer();
-    	
     	// Search ITEMs in BOT's near distance
-    	if (pickUpItemViaDistance(missingWeapons))
+    	if (pickUpItemViaDistance())
     	{
     		return;
     	}
@@ -484,7 +467,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private boolean returnHome()
     {
-    	combatStealer();
     	navigate(ctf.getOurBase());
     	
         return true;
