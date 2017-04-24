@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 
-import cz.cuni.amis.pogamut.base.agent.state.impl.AgentState;
 import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
@@ -17,9 +16,7 @@ import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
-import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentStats;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
@@ -31,12 +28,6 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoin
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoBotJoined;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoBotLeft;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelBotJoined;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelBotLeft;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelCreated;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelDestroyed;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.server.UT2004TCServer;
 import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
@@ -63,7 +54,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     //private boolean usingCoverPath = false;
     
     // Target navigation point of bot way
-    private Location targetNavPoint = null;
+    private ILocated targetNavPoint = null;
     
     // Must I use cover path? (properties settings)
     //private boolean useCoverPath = false;
@@ -71,8 +62,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     // Next navigation point for navigate
     //private NavPoint runningToNavPoint = null;
 	
+    private static final int BOTS_COUNT = 5;
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
 	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
+	
+	private Location flagPositionEnemy;
+	private Location flagPositionOur;
+	
+	private String lastMsg;
 	
 	static {
 		List<String> n = MyCollections.toList(names);
@@ -136,16 +133,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		// Only two weapons here, both good at sniping
     }
     
-    public String toString(TCMessage tcMessage) {
+    public String toString(TCMessage tcMessage)
+    {
     	StringBuffer sb = new StringBuffer();
     	sb.append(tcMessage.getTarget());
-    	switch(tcMessage.getTarget()) {
+    	
+    	switch(tcMessage.getTarget())
+    	{
     	case CHANNEL:
     		sb.append("[");
     		sb.append(tcMessage.getChannelId());
     		sb.append("]");
     		break;
     	}
+    	
     	sb.append(" from " + getPlayerName(tcMessage.getSource()));
     	sb.append(" of type ");
     	sb.append(tcMessage.getMessageType().getToken());
@@ -155,45 +156,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return sb.toString();
     }
     
-    // ====================
-    // TC Protocol Messages
-    // ====================
-    
-    @EventListener(eventClass=TCInfoBotJoined.class)
-    public void tcBotJoined(TCInfoBotJoined botJoined) {
-    	log.info("@EventListener(TCInfoBotJoined): Bot " + getPlayerName(botJoined.getBotId()) + " from team " + botJoined.getTeam() + " has joined the TC server.");
-    }
-    
-    @EventListener(eventClass=TCInfoBotLeft.class)
-    public void tcBotLeft(TCInfoBotLeft botLeft) {
-    	log.info("@EventListener(TCInfoBotLeft): Bot " + getPlayerName(botLeft.getBotId()) + " from team " + botLeft.getTeam() + " has left the TC server.");
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelCreated.class)
-    public void tcInfoTeamChannelCreated(TCInfoTeamChannelCreated channelCreated) {
-    	log.info("@EventListener(TCInfoTeamChannelCreated): New team channel " + channelCreated.getChannel().getChannelId() + " created by " + getPlayerName(channelCreated.getChannel().getCreator()) + ".");
-    	
-    	if (myNumber > 1) {
-    		log.info("Joining channel " + channelCreated.getChannel().getChannelId() + " !");
-    		tcClient.requestJoinChannel(channelCreated.getChannel().getChannelId());
-    	}
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelDestroyed.class)
-    public void tcInfoTeamChannelDestroyed(TCInfoTeamChannelDestroyed channelDestroyed) {
-    	log.info("@EventListener(TCInfoTeamChannelDestroyed): Team channel " + channelDestroyed.getChannelId() + " destroyed by " + getPlayerName(channelDestroyed.getDestroyer()) + ".");
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelBotJoined.class)
-    public void tcInfoTeamChannelBotJoined(TCInfoTeamChannelBotJoined botJoined) {
-    	log.info("@EventListener(TCInfoTeamChannelBotJoined): Bot " + getPlayerName(botJoined.getBotId()) + " joined team channel " + botJoined.getChannelId() + ".");
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelBotLeft.class)
-    public void tcInfoTeamChannelBotLeft(TCInfoTeamChannelBotLeft botLeft) {
-    	log.info("@EventListener(TCInfoTeamChannelBotLeft): Bot " + getPlayerName(botLeft.getBotId()) + " left team channel " + botLeft.getChannelId() + ".");
-    }
-
     // ============
     // ALL MESSAGES
     // ============
@@ -232,21 +194,18 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void beforeFirstLogic()
     {
-    	// TODO - run before first logic  	
+    	flagPositionEnemy = ctf.getEnemyFlag().getLocation();
+    	flagPositionOur = ctf.getOurFlag().getLocation();
     }
     
     @Override
     public void logic() throws PogamutException
     {	    
+    	connectionToTC();
     	
+    	sendMsgToTeam("Nazdar dementi ... !!!");
+    	recievMsg();
     	
-    	/*if (!visibility.isInitialized())
-        {
-    		log.warning("Missing visibility information for the map: " + game.getMapName());
-    		body.getCommunication().sendGlobalTextMessage("Missing visibility information for this map!");
-    		return;
-    	}*/
-
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
@@ -271,58 +230,105 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         	{
         		runForFlag();
         	}
-        	else if (ctf.getEnemyFlag().getHolder() == info.getId())
+        	else if (ctf.isBotCarryingEnemyFlag())
         	{
-        		returnHome();
-        	}
-        	else if(ctf.isBotCarryingEnemyFlag())
-        	{
-        		// TODO - after communication run to BOT with FALG
+        		if (ctf.canBotScore())
+        		{
+        			returnHome();        			
+        		}
+        		else
+        		{
+        			// TODO - useCoverPath
+        		}
         	}
         	else
         	{
         		// TODO - don't know what happen
         	}
-        	
-        	//navigate(targetNavPoint);
     	}
     	// ********** CODE FOR DEFENDER
     	else
     	{
     		if (ctf.isOurFlagHome())
     		{
-    			pickupSomeWeapon();
-    			combatDefender(ctf.getOurBase());
-    		}
-    		else if (ctf.isOurFlagHeld() || ctf.isOurFlagDropped())
-    		{
-    			combatDefender(ctf.getEnemyBase());
+    			if (combatDefender(ctf.getOurBase()))
+    			{
+    				
+    			}
+    			else
+    			{
+    				pickupSomeWeapon();
+    				pickupGoodItem();
+    			}
     		}
     		else
     		{
-    			// TODO - don't know what happen
+    			if (ctf.canEnemyTeamScore())
+    			{
+    				// TODO - our flag is stealed : enemy flag is home
+    			}
+    			else
+    			{
+    				
+    			}
+    			combatDefender(ctf.getEnemyBase());
     		}
-    		
-    		navigate(targetNavPoint);
     	}
  
     	navigation.navigate(targetNavPoint);
     	info.atLocation(targetNavPoint, 30);
     }
     
+    private void recievMsg()
+    {
+    	for (TCMessage msg : tcClient.getMessages())
+    	{
+    		if (msg.getMessageType().getToken().equals("TCHello"))
+    		{
+    			log.info("***** InLogic: " + toString(msg));    			
+    		}
+    	}
+    }
+    
+    private void sendMsgToTeam(String msg)
+    {
+    	log.info("MsgToTeam: " + msg);
+    	tcClient.sendToTeam(new TCHello(info.getId(), msg));
+    }
+    
+    private boolean connectionToTC()
+    {
+    	if (!tcClient.isConnected())
+    	{
+    		msgNum = 0;
+    		myChannelId = -1;
+    		log.info("Connection to TeamComunicator FAILED ...");
+    	
+    		return false;
+    	}
+    	
+    	if (myNumber != 1)
+    	{
+    		return false;
+    	}
+    	
+    	if (tcClient.getConnectedAllBots().size() != BOTS_COUNT)
+    	{
+    		// wait till all bots get connected...
+    		return false;
+    	}
+    	
+    	return true;
+    }
+    
     private boolean combatStealer()
     {
     	if (shooting())
     	{
-    		// TODO - bot is shooting ...
-    		// turn around and shoot to nearest enemy
     		return true;
     	}
-    	else
-    	{
-    		// TODO - bot is not shooting ...
-    		return false;
-    	}
+
+    	return false;
     }
     
     /**
@@ -358,14 +364,18 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 
 				if (!navigation.isNavigating())
 				{
-					move.turnTo(players.getNearestVisibleEnemy());
+					navigation.setFocus(players.getNearestVisibleEnemy());
 					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());	
 				}
 			}
 			else
 			{
 				// Another weapon shooting
-				move.setWalk();
+				if (move.isRunning())
+				{
+					move.setWalk();					
+				}
+				
 				navigation.setFocus(players.getNearestVisibleEnemy());
 				shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
 			}
@@ -479,29 +489,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         return true;
     }
     
-    private void navigate(NavPoint target)
-    {
-    	/*runningToNavPoint = target;
-        if (useCoverPath)
-        {
-            navigateCoverPath(target);
-        }
-        else
-        {
-            navigateStandard(target);
-        }*/
-        
-        navigate(target.getLocation());
-    }
-    
-    private void navigate(Location location)
+    private void navigate(ILocated location)
     {
     	targetNavPoint = location;
-    }
-    
-    private void navigate(Item item)
-    {
-    	navigate(item.getLocation());
     }
     
     private boolean combatDefender(NavPoint target)
@@ -619,10 +609,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         navigate(item);
         
         return true;
-    }
-    
-    private void say(String string) {
-        body.getCommunication().sendGlobalTextMessage(string);
     }
 
     /**
