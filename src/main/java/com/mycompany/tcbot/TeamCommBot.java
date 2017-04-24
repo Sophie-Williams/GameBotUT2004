@@ -284,7 +284,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         		// TODO - don't know what happen
         	}
         	
-        	navigate(targetNavPoint);
+        	//navigate(targetNavPoint);
     	}
     	// ********** CODE FOR DEFENDER
     	else
@@ -359,8 +359,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 				if (!navigation.isNavigating())
 				{
 					move.turnTo(players.getNearestVisibleEnemy());
-					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
-					navigation.navigate(targetNavPoint);	
+					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());	
 				}
 			}
 			else
@@ -370,14 +369,21 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 				navigation.setFocus(players.getNearestVisibleEnemy());
 				shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
 			}
-			
+
 			return true;
     	}
 
-    	if (!players.canSeeEnemies() && info.isShooting())
+    	if (!players.canSeeEnemies())
     	{
-    		shoot.stopShooting();
-    		move.setRun();
+    		if (info.isShooting())
+    		{
+    			shoot.stopShooting();    			
+    		}
+    		
+    		if (info.isWalking())
+    		{
+    			move.setRun();    			
+    		}
     		
     		return false;
     	}
@@ -444,12 +450,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return nearest;
     }
     
-    private void runForFlag()
+    private boolean runForFlag()
     {
     	// Search ITEMs in BOT's near distance
     	if (pickUpItemViaDistance())
     	{
-    		return;
+    		return false;
     	}
     	
     	// BOT needs urgent pick up health
@@ -457,12 +463,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	{
     		if (pickupNearestHealth())
     		{
-    			return;
+    			return false;
     		}
     	}
     	
     	// Navigation to enemy base for FLAG
     	navigate(ctf.getEnemyBase());
+    	return true;
     }
     
     private boolean returnHome()
