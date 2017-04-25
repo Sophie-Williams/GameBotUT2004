@@ -66,9 +66,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
 	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
 	
-	private Location flagPositionEnemy;
-	private Location flagPositionOur;
+	// MSGs data for STEALERS
+	// TODO - mandatory variables
 	
+	// MSGs data for DEFENDERS
+	// TODO - mandatory variables
+	
+	// MSGs data for ALL/TCHello
+	// TODO - mandatory variables/not all
+	
+	// TMP msg for showing communication between Bots
 	private String lastMsg;
 	
 	static {
@@ -133,42 +140,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		// Only two weapons here, both good at sniping
     }
     
-    public String toString(TCMessage tcMessage)
-    {
-    	StringBuffer sb = new StringBuffer();
-    	sb.append(tcMessage.getTarget());
-    	
-    	switch(tcMessage.getTarget())
-    	{
-    	case CHANNEL:
-    		sb.append("[");
-    		sb.append(tcMessage.getChannelId());
-    		sb.append("]");
-    		break;
-    	}
-    	
-    	sb.append(" from " + getPlayerName(tcMessage.getSource()));
-    	sb.append(" of type ");
-    	sb.append(tcMessage.getMessageType().getToken());
-    	sb.append(": ");
-    	sb.append(String.valueOf(tcMessage.getMessage()));
-    	
-    	return sb.toString();
-    }
-    
-    // ============
-    // ALL MESSAGES
-    // ============
-    
-    /**
-     * You can listen to all {@link TCMessage}s via standard {@link EventListener}.
-     * @param hello
-     */
-    @EventListener(eventClass=TCMessage.class)
-    public void tcMessage(TCMessage tcMessage) {
-    	log.info("@EventListener(TCMessage): " + toString(tcMessage));
-    }
-    
     // ======================
     // CLIENT DEFINED MESSAGE
     // ======================
@@ -179,17 +150,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
      */
     @EventListener(eventClass=TCHello.class)
 	public void hello(TCHello hello) {
-		log.info("@EventListener(TCHello): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+		//log.info("@EventListener(TCHello): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+    	lastMsg = hello.getMsg();
 	}
     
     @EventListener(eventClass=TCRoleStealer.class)
 	public void hello(TCRoleStealer hello) {
-		log.info("@EventListener(TCRoleStealer): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+		//log.info("@EventListener(TCRoleStealer): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+    	lastMsg = hello.getMsg();
 	}
     
     @EventListener(eventClass=TCRoleDefender.class)
 	public void hello(TCRoleDefender hello) {
-		log.info("@EventListener(TCRoleDefender): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+		//log.info("@EventListener(TCRoleDefender): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+    	lastMsg = hello.getMsg();
 	}
     
     // =====
@@ -204,8 +178,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void beforeFirstLogic()
     {
-    	flagPositionEnemy = ctf.getEnemyFlag().getLocation();
-    	flagPositionOur = ctf.getOurFlag().getLocation();
+    	// TODO - prepare data before first logic
     }
     
     @Override
@@ -214,6 +187,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	connectionToTC();
     	
     	sendMsgToTeam("Nazdar dementi ... !!!");
+    	sendMsgToStealers("Nazdar stealers ... !!!");
+    	sendMsgToDefenders("Nazdar defenders ... !!!");
+    	
     	recievMsg();
     	
     	// ********** CODE FOR STEALER
@@ -291,33 +267,37 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private void recievMsg()
     {
-    	for (TCMessage msg : tcClient.getMessages())
-    	{
-    		log.info("Message token type: " + msg.getMessageType().getToken());
-    		
-    		if (msg.getMessageType().getToken().equals(TCHello.MESSAGE_TYPE.getToken()))
-    		{
-    			log.info("***** InLogic: " + toString(msg));    			
-    		}
-    		
-    		if (msg.getMessageType().getToken().equals(TCRoleStealer.MESSAGE_TYPE.getToken()))
-    		{
-    			log.info("***** InLogic: " + toString(msg));    			
-    		}
-    		
-    		if (msg.getMessageType().getToken().equals(TCRoleDefender.MESSAGE_TYPE.getToken()))
-    		{
-    			log.info("***** InLogic: " + toString(msg));    			
-    		}
-    	}
+    	log.info(info.getName() + "_" + info.getId() + "********** MSG **********: " + lastMsg);
+    }
+    
+    private void sendMsgToStealers(String msg)
+    {
+    	// MSG Init
+    	TCRoleStealer stealer = new TCRoleStealer(info.getId(), msg);
+    	// MSG set variables
+    	
+    	// MSG send
+    	tcClient.sendToTeam(stealer);
+    }
+
+    private void sendMsgToDefenders(String msg)
+    {
+    	// MSG Init
+    	TCRoleDefender defender = new TCRoleDefender(info.getId(), msg);
+    	// MSG set variables
+    	
+    	// MSG send
+    	tcClient.sendToTeam(defender);
     }
     
     private void sendMsgToTeam(String msg)
     {
-    	//log.info("MsgToTeam: " + msg);
-    	//tcClient.sendToTeam(new TCHello(info.getId(), msg));
-    	tcClient.sendToTeam(new TCRoleStealer(info.getId(), msg));
-    	//tcClient.sendToTeam(new TCRoleDefender(info.getId(), msg));
+    	// MSG Init
+    	TCHello team = new TCHello(info.getId(), msg);
+    	// MSG set variables
+    	
+    	// MSG send
+    	tcClient.sendToTeam(team);
     }
     
     private boolean connectionToTC()
