@@ -226,29 +226,38 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	// ********** CODE FOR DEFENDER
     	else
     	{
+    		if (combatDefender())
+    		{
+    			return;
+    		}
+    		
     		if (ctf.isOurFlagHome())
     		{
-    			if (combatDefender(ctf.getOurBase()))
-    			{
-    				
-    			}
-    			else
+    			if (!senses.isHearingNoise())
     			{
     				pickupSomeWeapon();
     				pickupGoodItem();
     			}
+    			else
+    			{
+    				if (navigation.isNavigating())
+    				{
+    					navigation.stopNavigation();
+    				}
+    				
+    				if (!navigation.isNavigating())
+    				{
+    					move.turnHorizontal(90);
+    				}
+    				
+    				// TODO - dodelat chovani kdyz je vlajka doma
+    				// TODO - vyresit navigaci kdyz je vlajka doma (dovymyslet)
+    			}
     		}
     		else
     		{
-    			if (ctf.canEnemyTeamScore())
-    			{
-    				// TODO - our flag is stealed : enemy flag is home
-    			}
-    			else
-    			{
-    				
-    			}
-    			combatDefender(ctf.getEnemyBase());
+    			// TODO - dodelat chovani kdyz je vlajka ukradena
+    			// TODO - koordinovany pohyb k base nepritele (vymyslet taktiku)
     		}
     	}
  
@@ -318,18 +327,18 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private boolean combatStealer()
     {
+    	// BOT is shooting
     	if (shooting())
     	{
     		return true;
     	}
-    	else
-    	{
-    		if (senses.isShot())
-    		{
-    			navigation.setFocus(navigation.getLastTarget());
-    		}
-    	}
-
+    	
+    	// BOT isn't shooting
+    	if (senses.isShot())
+		{
+			navigation.setFocus(navigation.getLastTarget());
+		}
+    	
     	return false;
     }
     
@@ -496,30 +505,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	targetNavPoint = location;
     }
     
-    private boolean combatDefender(NavPoint target)
+    private boolean combatDefender()
     {
-    	if (players.canSeeEnemies())
+    	// BOT is shooting
+    	if (shooting())
     	{
-            // navigation to nearest visible enemy
-            navigate(players.getNearestVisibleEnemy().getLocation());
-            // shooting on nearest visible enemy
-            shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
-            
-            return true;
+    		return true;
     	}
-    	else if (!players.canSeeEnemies() && info.isShooting())
-    	{
-    		shoot.stopShooting();
-    		navigate(target);
-    		
-    		return false;
-    	}
-    	else
-    	{
-    		pickupSomeWeapon();
-    		
-    		return false;
-    	}
+    	
+    	// BOT isn't shooting
+    	return false;
     }
     
     private boolean needHealthUrgent()
