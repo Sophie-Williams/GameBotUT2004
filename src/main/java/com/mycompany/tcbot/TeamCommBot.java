@@ -182,6 +182,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		log.info("@EventListener(TCHello): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
 	}
     
+    @EventListener(eventClass=TCRoleStealer.class)
+	public void hello(TCRoleStealer hello) {
+		log.info("@EventListener(TCRoleStealer): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+	}
+    
+    @EventListener(eventClass=TCRoleDefender.class)
+	public void hello(TCRoleDefender hello) {
+		log.info("@EventListener(TCRoleDefender): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+	}
+    
     // =====
     // LOGIC
     // =====
@@ -283,7 +293,19 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     {
     	for (TCMessage msg : tcClient.getMessages())
     	{
-    		if (msg.getMessageType().getToken().equals("TCHello"))
+    		log.info("Message token type: " + msg.getMessageType().getToken());
+    		
+    		if (msg.getMessageType().getToken().equals(TCHello.MESSAGE_TYPE.getToken()))
+    		{
+    			log.info("***** InLogic: " + toString(msg));    			
+    		}
+    		
+    		if (msg.getMessageType().getToken().equals(TCRoleStealer.MESSAGE_TYPE.getToken()))
+    		{
+    			log.info("***** InLogic: " + toString(msg));    			
+    		}
+    		
+    		if (msg.getMessageType().getToken().equals(TCRoleDefender.MESSAGE_TYPE.getToken()))
     		{
     			log.info("***** InLogic: " + toString(msg));    			
     		}
@@ -292,8 +314,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private void sendMsgToTeam(String msg)
     {
-    	log.info("MsgToTeam: " + msg);
-    	tcClient.sendToTeam(new TCHello(info.getId(), msg));
+    	//log.info("MsgToTeam: " + msg);
+    	//tcClient.sendToTeam(new TCHello(info.getId(), msg));
+    	tcClient.sendToTeam(new TCRoleStealer(info.getId(), msg));
+    	//tcClient.sendToTeam(new TCRoleDefender(info.getId(), msg));
     }
     
     private boolean connectionToTC()
