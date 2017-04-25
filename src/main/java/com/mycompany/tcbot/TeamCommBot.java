@@ -195,18 +195,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
-    		// Bot where damaged
-    		if (senses.isShot())
-    		{
-    			log.info("Bot where damaged ...");
-    		}
-        	
-        	// Bot is hearing noise
-    		if (senses.isHearingNoise())
-    		{
-    			log.info("Bot is hearing noise ...");
-    		}
-        	
         	if (combatStealer())
         	{
         		return;
@@ -226,10 +214,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         		{
         			// TODO - useCoverPath
         		}
+        		
+        		// TODO - send own location for others bots
         	}
-        	else
+        	else if (!ctf.isEnemyFlagHome() && !ctf.isBotCarryingEnemyFlag())
         	{
-        		// TODO - don't know what happen
+        		// TODO - flag is stealed but this bot doesn't have a flag
+        		// TODO - compute location of enemy flag and cooperation with other bot
         	}
     	}
     	// ********** CODE FOR DEFENDER
@@ -330,6 +321,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	if (shooting())
     	{
     		return true;
+    	}
+    	else
+    	{
+    		if (senses.isShot())
+    		{
+    			navigation.setFocus(navigation.getLastTarget());
+    		}
     	}
 
     	return false;
