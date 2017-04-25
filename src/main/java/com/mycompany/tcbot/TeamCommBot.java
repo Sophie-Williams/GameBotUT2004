@@ -17,7 +17,6 @@ import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
-import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
@@ -29,12 +28,6 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoin
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoBotJoined;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoBotLeft;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelBotJoined;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelBotLeft;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelCreated;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.server.messages.TCInfoTeamChannelDestroyed;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.server.UT2004TCServer;
 import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
@@ -61,7 +54,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     //private boolean usingCoverPath = false;
     
     // Target navigation point of bot way
-    private Location targetNavPoint = null;
+    private ILocated targetNavPoint = null;
     
     // Must I use cover path? (properties settings)
     //private boolean useCoverPath = false;
@@ -69,8 +62,21 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     // Next navigation point for navigate
     //private NavPoint runningToNavPoint = null;
 	
+    private static final int BOTS_COUNT = 5;
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
 	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
+	
+	// MSGs data for STEALERS
+	// TODO - mandatory variables
+	
+	// MSGs data for DEFENDERS
+	// TODO - mandatory variables
+	
+	// MSGs data for ALL/TCHello
+	// TODO - mandatory variables/not all
+	
+	// TMP msg for showing communication between Bots
+	private String lastMsg;
 	
 	static {
 		List<String> n = MyCollections.toList(names);
@@ -81,8 +87,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	private static int number = 0;
 	private int myNumber;
 	private boolean stealer;
-	private Set<UT2004ItemType> missingWeapons;
-	private UT2004ItemType[] requiredWeapons;
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -101,94 +105,39 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         // false - secondary mode
         weaponPrefs.addGeneralPref(UT2004ItemType.LIGHTNING_GUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, true);
-        weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, true);
-        weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, false);
+        weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.ROCKET_LAUNCHER, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
         
-        // settings of distances for guns, how they were call via distance
-        weaponPrefs.newPrefsRange(500).add(UT2004ItemType.FLAK_CANNON, true)
-                                      .add(UT2004ItemType.LINK_GUN, true);
-        
-        weaponPrefs.newPrefsRange(1000).add(UT2004ItemType.MINIGUN, true)
-                                       .add(UT2004ItemType.LINK_GUN, false);
-        
-        weaponPrefs.newPrefsRange(5000).add(UT2004ItemType.LIGHTNING_GUN, true)
-                                      .add(UT2004ItemType.SHOCK_RIFLE, true);
-    }
-    
-    public String toString(TCMessage tcMessage) {
-    	StringBuffer sb = new StringBuffer();
-    	sb.append(tcMessage.getTarget());
-    	switch(tcMessage.getTarget()) {
-    	case CHANNEL:
-    		sb.append("[");
-    		sb.append(tcMessage.getChannelId());
-    		sb.append("]");
-    		break;
-    	}
-    	sb.append(" from " + getPlayerName(tcMessage.getSource()));
-    	sb.append(" of type ");
-    	sb.append(tcMessage.getMessageType().getToken());
-    	sb.append(": ");
-    	sb.append(String.valueOf(tcMessage.getMessage()));
-    	
-    	return sb.toString();
-    }
-    
-    // ====================
-    // TC Protocol Messages
-    // ====================
-    
-    @EventListener(eventClass=TCInfoBotJoined.class)
-    public void tcBotJoined(TCInfoBotJoined botJoined) {
-    	log.info("@EventListener(TCInfoBotJoined): Bot " + getPlayerName(botJoined.getBotId()) + " from team " + botJoined.getTeam() + " has joined the TC server.");
-    }
-    
-    @EventListener(eventClass=TCInfoBotLeft.class)
-    public void tcBotLeft(TCInfoBotLeft botLeft) {
-    	log.info("@EventListener(TCInfoBotLeft): Bot " + getPlayerName(botLeft.getBotId()) + " from team " + botLeft.getTeam() + " has left the TC server.");
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelCreated.class)
-    public void tcInfoTeamChannelCreated(TCInfoTeamChannelCreated channelCreated) {
-    	log.info("@EventListener(TCInfoTeamChannelCreated): New team channel " + channelCreated.getChannel().getChannelId() + " created by " + getPlayerName(channelCreated.getChannel().getCreator()) + ".");
-    	
-    	if (myNumber > 1) {
-    		log.info("Joining channel " + channelCreated.getChannel().getChannelId() + " !");
-    		tcClient.requestJoinChannel(channelCreated.getChannel().getChannelId());
-    	}
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelDestroyed.class)
-    public void tcInfoTeamChannelDestroyed(TCInfoTeamChannelDestroyed channelDestroyed) {
-    	log.info("@EventListener(TCInfoTeamChannelDestroyed): Team channel " + channelDestroyed.getChannelId() + " destroyed by " + getPlayerName(channelDestroyed.getDestroyer()) + ".");
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelBotJoined.class)
-    public void tcInfoTeamChannelBotJoined(TCInfoTeamChannelBotJoined botJoined) {
-    	log.info("@EventListener(TCInfoTeamChannelBotJoined): Bot " + getPlayerName(botJoined.getBotId()) + " joined team channel " + botJoined.getChannelId() + ".");
-    }
-    
-    @EventListener(eventClass=TCInfoTeamChannelBotLeft.class)
-    public void tcInfoTeamChannelBotLeft(TCInfoTeamChannelBotLeft botLeft) {
-    	log.info("@EventListener(TCInfoTeamChannelBotLeft): Bot " + getPlayerName(botLeft.getBotId()) + " left team channel " + botLeft.getChannelId() + ".");
-    }
-
-    // ============
-    // ALL MESSAGES
-    // ============
-    
-    /**
-     * You can listen to all {@link TCMessage}s via standard {@link EventListener}.
-     * @param hello
-     */
-    @EventListener(eventClass=TCMessage.class)
-    public void tcMessage(TCMessage tcMessage) {
-    	log.info("@EventListener(TCMessage): " + toString(tcMessage));
+        weaponPrefs.newPrefsRange(50)
+        .add(UT2004ItemType.SHIELD_GUN, true);
+		// Only one weapon is added to this close combat range and it is SHIELD GUN		
+			
+		// Second range class is from 80 to 1000 ut units (its always from the previous class to the maximum
+		// distance of actual class
+		weaponPrefs.newPrefsRange(500)
+		        .add(UT2004ItemType.FLAK_CANNON, true)
+		        .add(UT2004ItemType.MINIGUN, true)
+		        .add(UT2004ItemType.LINK_GUN, false)
+		        .add(UT2004ItemType.ASSAULT_RIFLE, true);        
+		// More weapons are in this class with FLAK CANNON having the top priority		
+				
+		// Third range class is from 1000 to 4000 ut units - that's quite far actually
+		weaponPrefs.newPrefsRange(2000)
+		        .add(UT2004ItemType.SHOCK_RIFLE, true)
+		        .add(UT2004ItemType.MINIGUN, false);
+		// Two weapons here with SHOCK RIFLE being the top
+				
+		// The last range class is from 4000 to 100000 ut units. In practise 100000 is
+		// the same as infinity as there is no map in UT that big
+		weaponPrefs.newPrefsRange(50000)
+		        .add(UT2004ItemType.LIGHTNING_GUN, true)
+		        .add(UT2004ItemType.SHOCK_RIFLE, true);  	  
+		// Only two weapons here, both good at sniping
     }
     
     // ======================
@@ -201,7 +150,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
      */
     @EventListener(eventClass=TCHello.class)
 	public void hello(TCHello hello) {
-		log.info("@EventListener(TCHello): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+		//log.info("@EventListener(TCHello): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+    	lastMsg = hello.getMsg();
+	}
+    
+    @EventListener(eventClass=TCRoleStealer.class)
+	public void hello(TCRoleStealer hello) {
+		//log.info("@EventListener(TCRoleStealer): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+    	lastMsg = hello.getMsg();
+	}
+    
+    @EventListener(eventClass=TCRoleDefender.class)
+	public void hello(TCRoleDefender hello) {
+		//log.info("@EventListener(TCRoleDefender): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
+    	lastMsg = hello.getMsg();
 	}
     
     // =====
@@ -216,75 +178,161 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void beforeFirstLogic()
     {
-    	requiredWeapons = new UT2004ItemType[] {
-				UT2004ItemType.ASSAULT_RIFLE,
-				UT2004ItemType.SHIELD_GUN,
-				UT2004ItemType.LIGHTNING_GUN,
-				UT2004ItemType.SHOCK_RIFLE,
-				UT2004ItemType.MINIGUN,
-				UT2004ItemType.LINK_GUN,
-				UT2004ItemType.FLAK_CANNON,
-				UT2004ItemType.ASSAULT_RIFLE,
-				UT2004ItemType.ROCKET_LAUNCHER,
-				UT2004ItemType.SHIELD_GUN,
-				UT2004ItemType.BIO_RIFLE,
-				};
-    	
-    	missingWeapons = filterNotLoaded(requiredWeapons);  	
+    	// TODO - prepare data before first logic
     }
     
     @Override
     public void logic() throws PogamutException
     {	    
-    	/*if (!visibility.isInitialized())
-        {
-    		log.warning("Missing visibility information for the map: " + game.getMapName());
-    		body.getCommunication().sendGlobalTextMessage("Missing visibility information for this map!");
-    		return;
-    	}*/
-
+    	connectionToTC();
+    	
+    	sendMsgToTeam("Nazdar dementi ... !!!");
+    	sendMsgToStealers("Nazdar stealers ... !!!");
+    	sendMsgToDefenders("Nazdar defenders ... !!!");
+    	
+    	recievMsg();
+    	
+    	// ********** CODE FOR STEALER
     	if (stealer)
     	{
+    		// Bot where damaged
+    		if (senses.isShot())
+    		{
+    			log.info("Bot where damaged ...");
+    		}
+        	
+        	// Bot is hearing noise
+    		if (senses.isHearingNoise())
+    		{
+    			log.info("Bot is hearing noise ...");
+    		}
+        	
+        	if (combatStealer())
+        	{
+        		return;
+        	}
+    		
         	if (ctf.isEnemyFlagHome())
         	{
         		runForFlag();
         	}
-        	else if (ctf.getEnemyFlag().getHolder() == info.getId())
+        	else if (ctf.isBotCarryingEnemyFlag())
         	{
-        		returnHome();
-        	}
-        	else if(ctf.isBotCarryingEnemyFlag())
-        	{
-        		// TODO - after communication run to BOT with FALG
+        		if (ctf.canBotScore())
+        		{
+        			returnHome();        			
+        		}
+        		else
+        		{
+        			// TODO - useCoverPath
+        		}
         	}
         	else
         	{
         		// TODO - don't know what happen
         	}
-        	
-        	navigate(targetNavPoint);
     	}
+    	// ********** CODE FOR DEFENDER
     	else
     	{
     		if (ctf.isOurFlagHome())
     		{
-    			pickupSomeWeapon();
-    			combatDefender(ctf.getOurBase());
-    		}
-    		else if (ctf.isOurFlagHeld() || ctf.isOurFlagDropped())
-    		{
-    			combatDefender(ctf.getEnemyBase());
+    			if (combatDefender(ctf.getOurBase()))
+    			{
+    				
+    			}
+    			else
+    			{
+    				pickupSomeWeapon();
+    				pickupGoodItem();
+    			}
     		}
     		else
     		{
-    			// TODO - don't know what happen
+    			if (ctf.canEnemyTeamScore())
+    			{
+    				// TODO - our flag is stealed : enemy flag is home
+    			}
+    			else
+    			{
+    				
+    			}
+    			combatDefender(ctf.getEnemyBase());
     		}
-    		
-    		navigate(targetNavPoint);
     	}
  
     	navigation.navigate(targetNavPoint);
-    	missingWeapons = filterNotLoaded(requiredWeapons);
+    	info.atLocation(targetNavPoint, 30);
+    }
+    
+    private void recievMsg()
+    {
+    	log.info(info.getName() + "_" + info.getId() + "********** MSG **********: " + lastMsg);
+    }
+    
+    private void sendMsgToStealers(String msg)
+    {
+    	// MSG Init
+    	TCRoleStealer stealer = new TCRoleStealer(info.getId(), msg);
+    	// MSG set variables
+    	
+    	// MSG send
+    	tcClient.sendToTeam(stealer);
+    }
+
+    private void sendMsgToDefenders(String msg)
+    {
+    	// MSG Init
+    	TCRoleDefender defender = new TCRoleDefender(info.getId(), msg);
+    	// MSG set variables
+    	
+    	// MSG send
+    	tcClient.sendToTeam(defender);
+    }
+    
+    private void sendMsgToTeam(String msg)
+    {
+    	// MSG Init
+    	TCHello team = new TCHello(info.getId(), msg);
+    	// MSG set variables
+    	
+    	// MSG send
+    	tcClient.sendToTeam(team);
+    }
+    
+    private boolean connectionToTC()
+    {
+    	if (!tcClient.isConnected())
+    	{
+    		msgNum = 0;
+    		myChannelId = -1;
+    		log.info("Connection to TeamComunicator FAILED ...");
+    	
+    		return false;
+    	}
+    	
+    	if (myNumber != 1)
+    	{
+    		return false;
+    	}
+    	
+    	if (tcClient.getConnectedAllBots().size() != BOTS_COUNT)
+    	{
+    		// wait till all bots get connected...
+    		return false;
+    	}
+    	
+    	return true;
+    }
+    
+    private boolean combatStealer()
+    {
+    	if (shooting())
+    	{
+    		return true;
+    	}
+
+    	return false;
     }
     
     /**
@@ -305,35 +353,74 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 		return result;
 	}
     
-    private boolean pickUpItemViaDistance(Collection<UT2004ItemType> requiredWeaponsColl)
-    {
-    	if (requiredWeapons == null)
+	private boolean shooting()
+	{
+		if (players.canSeeEnemies())
     	{
-    		return false;
+			// SHOCK_RIFLE or LIGHTNING_GUN shooting ...
+			if (info.getCurrentWeaponType().equals(UT2004ItemType.SHOCK_RIFLE)
+					|| info.getCurrentWeaponType().equals(UT2004ItemType.LIGHTNING_GUN))
+			{
+				if (navigation.isNavigating())
+				{
+					navigation.stopNavigation();
+				}
+
+				if (!navigation.isNavigating())
+				{
+					navigation.setFocus(players.getNearestVisibleEnemy());
+					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());	
+				}
+			}
+			else
+			{
+				// Another weapon shooting
+				if (move.isRunning())
+				{
+					move.setWalk();					
+				}
+				
+				navigation.setFocus(players.getNearestVisibleEnemy());
+				shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
+			}
+
+			return true;
     	}
 
+    	if (!players.canSeeEnemies())
+    	{
+    		if (info.isShooting())
+    		{
+    			shoot.stopShooting();    			
+    		}
+    		
+    		if (info.isWalking())
+    		{
+    			move.setRun();    			
+    		}
+    		
+    		return false;
+    	}
+    	
+    	return false;
+	}
+	
+    private boolean pickUpItemViaDistance()
+    {
     	double distance = Double.MAX_VALUE;
     	Item item = info.getNearestVisibleItem();
     	
-    	if (item != null && item.getNavPoint() != null && info.getNearestNavPoint() != null)
+    	if (item != null
+    			&& item.getNavPoint() != null
+    			&& !weaponry.hasLoadedWeapon(item.getType()))
     	{
-    		distance = fwMap.getDistance(item.getNavPoint(), info.getNearestNavPoint());
+    		distance = info.getDistance(item.getNavPoint().getLocation());
     	}
     	  	
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
-    		int origCount = missingWeapons.size(), newCount;
-    		
-    		navigate(info.getNearestVisibleItem());
-    		missingWeapons = filterNotLoaded(requiredWeapons);
-    		
     		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + info.getNearestVisibleItem().getType().getName());
-
-    		newCount = missingWeapons.size();
-    		if (origCount != newCount)
-    		{
-    			log.info("Picking up some WEAPON!");
-    		}
+    		navigate(info.getNearestVisibleItem());
     		
     		return true;
     	}
@@ -377,15 +464,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return nearest;
     }
     
-    private void runForFlag()
+    private boolean runForFlag()
     {
-    	// Combat via STEALER
-    	combatStealer();
-    	
     	// Search ITEMs in BOT's near distance
-    	if (pickUpItemViaDistance(missingWeapons))
+    	if (pickUpItemViaDistance())
     	{
-    		return;
+    		return false;
     	}
     	
     	// BOT needs urgent pick up health
@@ -393,58 +477,25 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	{
     		if (pickupNearestHealth())
     		{
-    			return;
+    			return false;
     		}
     	}
     	
     	// Navigation to enemy base for FLAG
     	navigate(ctf.getEnemyBase());
+    	return true;
     }
     
     private boolean returnHome()
     {
-    	combatStealer();
     	navigate(ctf.getOurBase());
     	
         return true;
     }
     
-    private void combatStealer()
-    {
-    	if (players.canSeeEnemies())
-    	{
-    		shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
-    	}
-
-    	if (!players.canSeeEnemies() && info.isShooting())
-    	{
-    		shoot.stopShooting();
-    	}
-    }
-    
-    private void navigate(NavPoint target)
-    {
-    	/*runningToNavPoint = target;
-        if (useCoverPath)
-        {
-            navigateCoverPath(target);
-        }
-        else
-        {
-            navigateStandard(target);
-        }*/
-        
-        navigate(target.getLocation());
-    }
-    
-    private void navigate(Location location)
+    private void navigate(ILocated location)
     {
     	targetNavPoint = location;
-    }
-    
-    private void navigate(Item item)
-    {
-    	navigate(item.getLocation());
     }
     
     private boolean combatDefender(NavPoint target)
@@ -562,10 +613,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         navigate(item);
         
         return true;
-    }
-    
-    private void say(String string) {
-        body.getCommunication().sendGlobalTextMessage(string);
     }
 
     /**
