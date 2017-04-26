@@ -49,19 +49,31 @@ import cz.cuni.amis.utils.exception.PogamutException;
  * @author Jakub Gemrot aka Jimmy
  */
 @AgentScoped
-public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
-
+public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
+{
+	// GAME SETTINGS
+	// Current year
+	private static String year;
+	// Red = 0 ; Blue = 1
+	private static int team;
+	// Skill of bots
+	private static int skill;
+	// Count of bots in one team
+	private static int teamBotsCount;
+	// Network address
+	private static String address;
+	
+	// Global variables
+	private static final String STEALER = "Stealer";
+	private static final String DEFENDER = "Defender";
 	private static final String PATHNODE = "PathNode";
 	private static final String INVENTORYSPOT = "InventorySpot";
-	private static final int BOTS_COUNT = 5;
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
-	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
-	
-	// Default map for current game
-	private String GameMap;
 	
 	// Default defenders locations
 	private int [] defaultPositions;
+	private int [] freePositions = {0, 0, 0, 0, 0, 0};
+	private NavPoint defenderPosition;
 	
 	// NavPoints for CITADEL
 	private static final String MAP_NAME_CITADEL = "CTF-Citadel";
@@ -93,22 +105,21 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	// TMP msg for showing communication between Bots
 	private Map<UnrealId, TCRoleDefender> defenders;
 	private Map<UnrealId, TCRoleStealer> stealers;
-	
-	static {
-		List<String> n = MyCollections.toList(names);
-		Collections.shuffle(n);
-		names = n.toArray(new String[n.size()]);
-	}
-	
+
 	private static int number = 0;
-	private int myNumber;
+	private int botNumber;
 	private boolean stealer;
 	
     @Override
     public Initialize getInitializeCommand() {
-    	myNumber = ++number;
-    	stealer = myNumber % 2 == 0 ? false : true;
-        return new Initialize().setName(names[(myNumber) % names.length] + (myNumber < 3 ? "-RED" : "-BLUE")).setTeam(myNumber < 3 ? AgentInfo.TEAM_RED : AgentInfo.TEAM_BLUE);
+    	botNumber = ++number;
+    	
+    	Initialize init = new Initialize();
+    	init.setDesiredSkill(skill);
+    	init.setTeam(team);
+    	init.setName(team + "_" + getBotName());
+        
+    	return init;
     }
 
     @Override
@@ -209,6 +220,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	
     	defenders = new HashMap<UnrealId, TCRoleDefender>();
     	stealers = new HashMap<UnrealId, TCRoleStealer>();
+    	
+    	
     }
     
     @Override
@@ -216,8 +229,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     {	    
     	connectionToTC();
     	
-    	sendMsgToStealers("Nazdar stealers ... !!!");
-    	sendMsgToDefenders(0 + ";" + info.getId());
+    	if (stealer)
+    	{
+    		sendMsgToStealers("Nazdar stealers ... !!!");    		
+    	}
+    	else
+    	{
+    		sendMsgToDefenders(0 + ";" + info.getId());    		
+    	}
     	
     	recievMsg();
     	
@@ -373,12 +392,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		return false;
     	}
     	
-    	if (myNumber != 1)
+    	if (botNumber != 1)
     	{
     		return false;
     	}
     	
-    	if (tcClient.getConnectedAllBots().size() != BOTS_COUNT)
+    	if (tcClient.getConnectedAllBots().size() != teamBotsCount)
     	{
     		// wait till all bots get connected...
     		return false;
@@ -685,12 +704,56 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return getPlayer(id).getName();
     }
     
-    public static void main(String args[]) throws PogamutException {
-    	// Start TC (~ TeamCommunication) Server first...
-    	 tcServer = UT2004TCServer.startTCServer();
+    private static void initialize(String [] args) throws Exception
+    {
+    	year = args[0];
+    	team = Integer.parseInt(args[1]);
+    	skill = Integer.parseInt(args[2]);
+    	teamBotsCount = Integer.parseInt(args[3]);
+    	address = args[4];
+    }
+    
+    private String getBotName()
+    {
+    	String tmp = "";
+    	if (teamBotsCount < 5)
+    	{
+    		if (botNumber == 1)
+    		{
+    			stealer = false;
+    			tmp = DEFENDER;
+    		}
+    		else
+    		{
+    			stealer = true;
+    			tmp = STEALER;
+    		}
+    	}
+    	else
+    	{
+    		if (botNumber == 1 || botNumber == 2)
+    		{
+    			stealer = false;
+    			tmp = DEFENDER;
+    		}
+    		else
+    		{
+    			stealer = true;
+    			tmp = STEALER;
+    		}
+    	}
     	
-    	// Starts 3 bot
-        new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(10);       
+    	return tmp;
+    }
+    
+    public static void main(String args[]) throws PogamutException, Exception
+    {
+    	initialize(args);
+    	
+    	// Start TC (~ TeamCommunication) Server first...
+    	tcServer = UT2004TCServer.startTCServer();
+    	// Start bots
+        new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(teamBotsCount);       
     }
     
 //    @Override 
