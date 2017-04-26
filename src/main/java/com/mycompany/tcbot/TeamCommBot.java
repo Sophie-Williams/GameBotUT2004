@@ -77,18 +77,24 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	
 	// NavPoints for CITADEL
 	private static final String MAP_NAME_CITADEL = "CTF-Citadel";
-	// redTower, blueTower, redPosition1, redPosition2, bluePosition1, bluePosition2
-	int [] defaultPositionsCitadel = {14, 36, 11, 75, 30, 41};
+	// p1, p2, tower
+	int [] defaultRedPositionCitadel = {11, 75, 14};
+	// p1, p2, tower
+	int [] defaultBluePositionCitadel = {30, 41, 36};
 	
 	// NavPoints for MAUL
-	private static final String MAP_NAME_MAUL = "CTF-BP2-Maul";
-	// redTower, blueTower, redPosition1, redPosition2, bluePosition1, bluePosition2
-	int [] defaultPositionsMaul = {46, 54, 101, 117, 17, 138};
+	private static final String MAP_NAME_MAUL = "CTF-Maul";
+	// p1, p2, tower
+	int [] defaultRedPositionMaul = {101, 117, 46};
+	// p1, p2, tower
+	int [] defaultBluePositionMaul = {17, 138, 54};
 	
 	// NavPoints for BP2-CONCENTRATE
 	private static final String MAP_NAME_BP2 = "CTF-BP2-Concentrate";
-	// redTower, blueTower, redPosition1, redPosition2, bluePosition1, bluePosition2
-	int [] defaultPositionsBP2 = {50, 41, 77, 78, 35, 23};
+	// p1, p2, tower
+	int [] defaultRedPositionBP2 = {77, 78, 50};
+	// p1, p2, tower
+	int [] defaultBluePositionBP2 = {35, 23, 41};
 	
     // Target navigation point of bot way
     private ILocated targetNavPoint = null;
@@ -203,15 +209,36 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (game.getMapName().equals(MAP_NAME_CITADEL))
     	{
-    		defaultPositions = defaultPositionsCitadel;
+    		if (team == 0)
+    		{
+    			defaultPositions = defaultRedPositionCitadel;
+    		}
+    		else
+    		{
+    			defaultPositions = defaultBluePositionCitadel;
+    		}
     	}
     	else if (game.getMapName().equals(MAP_NAME_BP2))
     	{
-    		defaultPositions = defaultPositionsBP2;
+    		if (team == 0)
+    		{
+    			defaultPositions = defaultRedPositionBP2;
+    		}
+    		else
+    		{
+    			defaultPositions = defaultBluePositionBP2;
+    		}
     	}
     	else if (game.getMapName().equals(MAP_NAME_MAUL))
     	{
-    		defaultPositions = defaultPositionsMaul;
+    		if (team == 0)
+    		{
+    			defaultPositions = defaultRedPositionMaul;
+    		}
+    		else
+    		{
+    			defaultPositions = defaultBluePositionMaul;
+    		}
     	}
     	else
     	{
@@ -221,7 +248,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	defenders = new HashMap<UnrealId, TCRoleDefender>();
     	stealers = new HashMap<UnrealId, TCRoleStealer>();
     	
-    	
+    	if (!stealer)
+    	{
+    		defenderPosition = navPoints.getNavPoint(PATHNODE + defaultPositions[botNumber - 1]);
+    	}
     }
     
     @Override
@@ -302,20 +332,21 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     
     private boolean guardingOurBase()
     {
-    	if (isBotShotWithoutSeenEnemy())
-		{
-			log.info("sho without enemy seeing");
-			return true;
-		}
-		
-		if (pickupSomeWeapon())
-		{
-			log.info("pick up some weapons");
-			return true;
-		}
+//    	if (isBotShotWithoutSeenEnemy())
+//		{
+//			log.info("sho without enemy seeing");
+//			return true;
+//		}
+//		
+//		if (pickupSomeWeapon())
+//		{
+//			log.info("pick up some weapons");
+//			return true;
+//		}
 		
 		// Go on defenders positions
-
+		navigate(defenderPosition);
+		
 		return false;
     }
     
@@ -718,7 +749,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	String tmp = "";
     	if (teamBotsCount < 5)
     	{
-    		if (botNumber == 1)
+    		if (botNumber < 2)
+    		{
+    			stealer = false;
+    			tmp = DEFENDER;
+    		}
+    		else
+    		{
+    			stealer = true;
+    			tmp = STEALER;
+    		}
+    	}
+    	else if (teamBotsCount < 7)
+    	{
+    		if (botNumber < 3)
     		{
     			stealer = false;
     			tmp = DEFENDER;
@@ -731,7 +775,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	else
     	{
-    		if (botNumber == 1 || botNumber == 2)
+    		if (botNumber < 4)
     		{
     			stealer = false;
     			tmp = DEFENDER;
