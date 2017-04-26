@@ -2,8 +2,10 @@ package com.mycompany.tcbot;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 
@@ -27,7 +29,6 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
-import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.server.UT2004TCServer;
 import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
@@ -48,24 +49,56 @@ import cz.cuni.amis.utils.exception.PogamutException;
  * @author Jakub Gemrot aka Jimmy
  */
 @AgentScoped
-public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
-
-	// Do I use cover path?
-    //private boolean usingCoverPath = false;
-    
+public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
+{
+	// GAME SETTINGS
+	// Current year
+	private static String year;
+	// Red = 0 ; Blue = 1
+	private static int team;
+	// Skill of bots
+	private static int skill;
+	// Count of bots in one team
+	private static int teamBotsCount;
+	// Network address
+	private static String address;
+	
+	// Global variables
+	private static final String STEALER = "Stealer";
+	private static final String DEFENDER = "Defender";
+	private static final String PATHNODE = "PathNode";
+	private static final String INVENTORYSPOT = "InventorySpot";
+	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
+	
+	// Default defenders locations
+	private int [] defaultPositions;
+	private int [] freePositions = {0, 0, 0, 0, 0, 0};
+	private NavPoint defenderPosition;
+	
+	// NavPoints for CITADEL
+	private static final String MAP_NAME_CITADEL = "CTF-Citadel";
+	// p1, p2, tower
+	int [] defaultRedPositionCitadel = {11, 75, 14};
+	// p1, p2, tower
+	int [] defaultBluePositionCitadel = {30, 41, 36};
+	
+	// NavPoints for MAUL
+	private static final String MAP_NAME_MAUL = "CTF-Maul";
+	// p1, p2, tower
+	int [] defaultRedPositionMaul = {101, 117, 46};
+	// p1, p2, tower
+	int [] defaultBluePositionMaul = {17, 138, 54};
+	
+	// NavPoints for BP2-CONCENTRATE
+	private static final String MAP_NAME_BP2 = "CTF-BP2-Concentrate";
+	// p1, p2, tower
+	int [] defaultRedPositionBP2 = {77, 78, 50};
+	// p1, p2, tower
+	int [] defaultBluePositionBP2 = {35, 23, 41};
+	
     // Target navigation point of bot way
     private ILocated targetNavPoint = null;
     
-    // Must I use cover path? (properties settings)
-    //private boolean useCoverPath = false;
-    
-    // Next navigation point for navigate
-    //private NavPoint runningToNavPoint = null;
-	
-    private static final int BOTS_COUNT = 5;
-	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
-	private static String[] names = new String[]{"Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec", "Tupec"};
-	
 	// MSGs data for STEALERS
 	// TODO - mandatory variables
 	
@@ -76,23 +109,23 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 	// TODO - mandatory variables/not all
 	
 	// TMP msg for showing communication between Bots
-	private String lastMsg;
-	
-	static {
-		List<String> n = MyCollections.toList(names);
-		Collections.shuffle(n);
-		names = n.toArray(new String[n.size()]);
-	}
-	
+	private Map<UnrealId, TCRoleDefender> defenders;
+	private Map<UnrealId, TCRoleStealer> stealers;
+
 	private static int number = 0;
-	private int myNumber;
+	private int botNumber;
 	private boolean stealer;
 	
     @Override
     public Initialize getInitializeCommand() {
-    	myNumber = ++number;
-    	stealer = myNumber % 2 == 0 ? true : false;
-        return new Initialize().setName(names[(myNumber) % names.length] + (myNumber < 3 ? "-RED" : "-BLUE")).setTeam(myNumber < 3 ? AgentInfo.TEAM_RED : AgentInfo.TEAM_BLUE);
+    	botNumber = ++number;
+    	
+    	Initialize init = new Initialize();
+    	init.setDesiredSkill(skill);
+    	init.setTeam(team);
+    	init.setName(team + "_" + getBotName());
+        
+    	return init;
     }
 
     @Override
@@ -144,26 +177,22 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     // CLIENT DEFINED MESSAGE
     // ======================
     
-    /**
-     * If messages you're sending implements {@link IWorldChangeEvent} and {@link IWorldEvent}, you can listen to them directly.
-     * @param hello
-     */
-    @EventListener(eventClass=TCHello.class)
-	public void hello(TCHello hello) {
-		//log.info("@EventListener(TCHello): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
-    	lastMsg = hello.getMsg();
-	}
-    
     @EventListener(eventClass=TCRoleStealer.class)
-	public void hello(TCRoleStealer hello) {
-		//log.info("@EventListener(TCRoleStealer): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
-    	lastMsg = hello.getMsg();
+	public void hello(TCRoleStealer hello)
+    {
+    	if (stealers != null)
+    	{
+    		stealers.put(hello.getWho(), hello);
+    	}
 	}
     
     @EventListener(eventClass=TCRoleDefender.class)
-	public void hello(TCRoleDefender hello) {
-		//log.info("@EventListener(TCRoleDefender): " + hello.getWho().getStringId() + " says '" + hello.getMsg() + "'");
-    	lastMsg = hello.getMsg();
+	public void hello(TCRoleDefender hello)
+    {
+    	if (defenders != null)
+    	{
+    		defenders.put(hello.getWho(), hello);
+    	}
 	}
     
     // =====
@@ -178,7 +207,51 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     @Override
     public void beforeFirstLogic()
     {
-    	// TODO - prepare data before first logic
+    	if (game.getMapName().equals(MAP_NAME_CITADEL))
+    	{
+    		if (team == 0)
+    		{
+    			defaultPositions = defaultRedPositionCitadel;
+    		}
+    		else
+    		{
+    			defaultPositions = defaultBluePositionCitadel;
+    		}
+    	}
+    	else if (game.getMapName().equals(MAP_NAME_BP2))
+    	{
+    		if (team == 0)
+    		{
+    			defaultPositions = defaultRedPositionBP2;
+    		}
+    		else
+    		{
+    			defaultPositions = defaultBluePositionBP2;
+    		}
+    	}
+    	else if (game.getMapName().equals(MAP_NAME_MAUL))
+    	{
+    		if (team == 0)
+    		{
+    			defaultPositions = defaultRedPositionMaul;
+    		}
+    		else
+    		{
+    			defaultPositions = defaultBluePositionMaul;
+    		}
+    	}
+    	else
+    	{
+    		log.info("Bots are not configured for map " + game.getMapName() + "!");
+    	}
+    	
+    	defenders = new HashMap<UnrealId, TCRoleDefender>();
+    	stealers = new HashMap<UnrealId, TCRoleStealer>();
+    	
+    	if (!stealer)
+    	{
+    		defenderPosition = navPoints.getNavPoint(PATHNODE + defaultPositions[botNumber - 1]);
+    	}
     }
     
     @Override
@@ -186,88 +259,127 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     {	    
     	connectionToTC();
     	
-    	sendMsgToTeam("Nazdar dementi ... !!!");
-    	sendMsgToStealers("Nazdar stealers ... !!!");
-    	sendMsgToDefenders("Nazdar defenders ... !!!");
+    	if (stealer)
+    	{
+    		sendMsgToStealers("Nazdar stealers ... !!!");    		
+    	}
+    	else
+    	{
+    		sendMsgToDefenders(0 + ";" + info.getId());    		
+    	}
     	
     	recievMsg();
     	
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
-    		// Bot where damaged
-    		if (senses.isShot())
-    		{
-    			log.info("Bot where damaged ...");
-    		}
-        	
-        	// Bot is hearing noise
-    		if (senses.isHearingNoise())
-    		{
-    			log.info("Bot is hearing noise ...");
-    		}
-        	
-        	if (combatStealer())
-        	{
-        		return;
-        	}
-    		
-        	if (ctf.isEnemyFlagHome())
-        	{
-        		runForFlag();
-        	}
-        	else if (ctf.isBotCarryingEnemyFlag())
-        	{
-        		if (ctf.canBotScore())
-        		{
-        			returnHome();        			
-        		}
-        		else
-        		{
-        			// TODO - useCoverPath
-        		}
-        	}
-        	else
-        	{
-        		// TODO - don't know what happen
-        	}
+//        	if (combatStealer())
+//        	{
+//        		return;
+//        	}
+//    		
+//        	if (ctf.isEnemyFlagHome())
+//        	{
+//        		runForFlag();
+//        	}
+//        	else if (ctf.isBotCarryingEnemyFlag())
+//        	{
+//        		if (ctf.canBotScore())
+//        		{
+//        			returnHome();        			
+//        		}
+//        		else
+//        		{
+//        			// TODO - useCoverPath
+//        		}
+//        		
+//        		// TODO - send own location for others bots
+//        	}
+//        	else if (!ctf.isEnemyFlagHome() && !ctf.isBotCarryingEnemyFlag())
+//        	{
+//        		// TODO - flag is stealed but this bot doesn't have a flag
+//        		// TODO - compute location of enemy flag and cooperation with other bot
+//        	}
     	}
     	// ********** CODE FOR DEFENDER
     	else
     	{
+    		if (combatDefender())
+    		{
+    			log.info("combat");
+    			return;
+    		}
+    		
     		if (ctf.isOurFlagHome())
     		{
-    			if (combatDefender(ctf.getOurBase()))
-    			{
-    				
-    			}
-    			else
-    			{
-    				pickupSomeWeapon();
-    				pickupGoodItem();
-    			}
+    			guardingOurBase();
+    			
+    			// TODO - dodelat chovani kdyz je vlajka doma
+    			// TODO - vyresit navigaci kdyz je vlajka doma (dovymyslet)
     		}
     		else
     		{
-    			if (ctf.canEnemyTeamScore())
-    			{
-    				// TODO - our flag is stealed : enemy flag is home
-    			}
-    			else
-    			{
-    				
-    			}
-    			combatDefender(ctf.getEnemyBase());
+    			// TODO - dodelat chovani kdyz je vlajka ukradena
+    			// TODO - koordinovany pohyb k base nepritele (vymyslet taktiku)
+    			log.info("else");
     		}
+
+    		navigation.navigate(targetNavPoint);
+    		info.atLocation(targetNavPoint, 30);
     	}
  
-    	navigation.navigate(targetNavPoint);
-    	info.atLocation(targetNavPoint, 30);
+    }
+    
+    private boolean guardingOurBase()
+    {
+//    	if (isBotShotWithoutSeenEnemy())
+//		{
+//			log.info("sho without enemy seeing");
+//			return true;
+//		}
+//		
+//		if (pickupSomeWeapon())
+//		{
+//			log.info("pick up some weapons");
+//			return true;
+//		}
+		
+		// Go on defenders positions
+		navigate(defenderPosition);
+		
+		return false;
+    }
+    
+    private boolean isBotShotWithoutSeenEnemy()
+    {
+    	if (senses.isShot())
+		{
+			if (navigation.isNavigating())
+			{
+				navigation.stopNavigation();
+			}
+			
+			if (!navigation.isNavigating())
+			{
+				move.turnHorizontal(90);
+			}
+			
+			return true;
+		}
+    	
+    	return false;
     }
     
     private void recievMsg()
     {
-    	log.info(info.getName() + "_" + info.getId() + "********** MSG **********: " + lastMsg);
+    	if (stealer)
+    	{
+    		log.info("stealers size: " + stealers.size());
+    	}
+    	else
+    	{
+    		log.info("defenders size: " + defenders.size());
+    	}
     }
     
     private void sendMsgToStealers(String msg)
@@ -311,12 +423,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     		return false;
     	}
     	
-    	if (myNumber != 1)
+    	if (botNumber != 1)
     	{
     		return false;
     	}
     	
-    	if (tcClient.getConnectedAllBots().size() != BOTS_COUNT)
+    	if (tcClient.getConnectedAllBots().size() != teamBotsCount)
     	{
     		// wait till all bots get connected...
     		return false;
@@ -327,11 +439,18 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
     private boolean combatStealer()
     {
+    	// BOT is shooting
     	if (shooting())
     	{
     		return true;
     	}
-
+    	
+    	// BOT isn't shooting
+    	if (senses.isShot())
+		{
+			navigation.setFocus(navigation.getLastTarget());
+		}
+    	
     	return false;
     }
     
@@ -355,6 +474,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     
 	private boolean shooting()
 	{
+		// BOT can see enemies
 		if (players.canSeeEnemies())
     	{
 			// SHOCK_RIFLE or LIGHTNING_GUN shooting ...
@@ -387,19 +507,15 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
 			return true;
     	}
 
-    	if (!players.canSeeEnemies())
+		// BOT can't see enemies
+    	if (info.isShooting())
     	{
-    		if (info.isShooting())
-    		{
-    			shoot.stopShooting();    			
-    		}
-    		
-    		if (info.isWalking())
-    		{
-    			move.setRun();    			
-    		}
-    		
-    		return false;
+    		shoot.stopShooting();    			
+    	}
+    	
+    	if (info.isWalking())
+    	{
+    		move.setRun();    			
     	}
     	
     	return false;
@@ -498,30 +614,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	targetNavPoint = location;
     }
     
-    private boolean combatDefender(NavPoint target)
+    private boolean combatDefender()
     {
-    	if (players.canSeeEnemies())
+    	// BOT is shooting
+    	if (shooting())
     	{
-            // navigation to nearest visible enemy
-            navigate(players.getNearestVisibleEnemy().getLocation());
-            // shooting on nearest visible enemy
-            shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
-            
-            return true;
+    		return true;
     	}
-    	else if (!players.canSeeEnemies() && info.isShooting())
-    	{
-    		shoot.stopShooting();
-    		navigate(target);
-    		
-    		return false;
-    	}
-    	else
-    	{
-    		pickupSomeWeapon();
-    		
-    		return false;
-    	}
+    	
+    	// BOT isn't shooting
+    	return false;
     }
     
     private boolean needHealthUrgent()
@@ -550,27 +652,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
         if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN))
         {
             if (navigateToItemType(UT2004ItemType.LINK_GUN))
-            {
-            	return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    private boolean pickupGoodItem()
-    {
-        if (items.getSpawnedItems(UT2004ItemType.SHIELD_PACK).size() > 0)
-        {
-            if (navigateToItemType(UT2004ItemType.SHIELD_PACK))
-            {
-            	return true;
-            }
-        }
-        
-        if (info.getHealth() < 80)
-        {
-            if (navigateToItemType(UT2004ItemType.HEALTH_PACK))
             {
             	return true;
             }
@@ -654,11 +735,81 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot> {
     	return getPlayer(id).getName();
     }
     
-    public static void main(String args[]) throws PogamutException {
-    	// Start TC (~ TeamCommunication) Server first...
-    	 tcServer = UT2004TCServer.startTCServer();
-    	
-    	// Starts 3 bot
-        new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(6);       
+    private static void initialize(String [] args) throws Exception
+    {
+    	year = args[0];
+    	team = Integer.parseInt(args[1]);
+    	skill = Integer.parseInt(args[2]);
+    	teamBotsCount = Integer.parseInt(args[3]);
+    	address = args[4];
     }
+    
+    private String getBotName()
+    {
+    	String tmp = "";
+    	if (teamBotsCount < 5)
+    	{
+    		if (botNumber < 2)
+    		{
+    			stealer = false;
+    			tmp = DEFENDER;
+    		}
+    		else
+    		{
+    			stealer = true;
+    			tmp = STEALER;
+    		}
+    	}
+    	else if (teamBotsCount < 7)
+    	{
+    		if (botNumber < 3)
+    		{
+    			stealer = false;
+    			tmp = DEFENDER;
+    		}
+    		else
+    		{
+    			stealer = true;
+    			tmp = STEALER;
+    		}
+    	}
+    	else
+    	{
+    		if (botNumber < 4)
+    		{
+    			stealer = false;
+    			tmp = DEFENDER;
+    		}
+    		else
+    		{
+    			stealer = true;
+    			tmp = STEALER;
+    		}
+    	}
+    	
+    	return tmp;
+    }
+    
+    public static void main(String args[]) throws PogamutException, Exception
+    {
+    	initialize(args);
+    	
+    	// Start TC (~ TeamCommunication) Server first...
+    	tcServer = UT2004TCServer.startTCServer();
+    	// Start bots
+        new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(teamBotsCount);       
+    }
+    
+//    @Override 
+//    public Initialize getInitializeCommand() 
+//    {
+//    this.botId = BOT_ID_COUNTER++;
+//
+//    Initialize init = new Initialize();
+//    init.setName(BOT_NAME_PREFIX + this.botId);
+//    init.setTeam(MKBot.param_team);
+//    init.setDesiredSkill(MKBot.param_skill); 
+//
+//    return init;
+//    }
 }
