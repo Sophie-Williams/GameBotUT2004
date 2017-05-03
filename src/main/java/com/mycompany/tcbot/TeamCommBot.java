@@ -1,23 +1,22 @@
 package com.mycompany.tcbot;
 
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 
-import cz.cuni.amis.pogamut.base.communication.translator.event.IWorldChangeEvent;
-import cz.cuni.amis.pogamut.base.communication.worldview.event.IWorldEvent;
+import cz.cuni.amis.pathfinding.alg.astar.AStarResult;
+import cz.cuni.amis.pathfinding.map.IPFMapView;
+import cz.cuni.amis.pogamut.base.agent.navigation.IPathFuture;
+import cz.cuni.amis.pogamut.base.agent.navigation.impl.PrecomputedPathFuture;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
 import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
-import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
-import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.AgentInfo;
+import cz.cuni.amis.pogamut.ut2004.agent.navigation.floydwarshall.FloydWarshallMap;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
@@ -27,12 +26,13 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInf
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.InitedMessage;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Item;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPoint;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.NavPointNeighbourLink;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.Player;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerMessage;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.server.UT2004TCServer;
 import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
 import cz.cuni.amis.utils.Cooldown;
-import cz.cuni.amis.utils.collections.MyCollections;
 import cz.cuni.amis.utils.exception.PogamutException;
 
 /**
@@ -67,12 +67,17 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String STEALER = "Stealer";
 	private static final String DEFENDER = "Defender";
 	private static final String PATHNODE = "PathNode";
-	private static final String INVENTORYSPOT = "InventorySpot";
 	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 100;
+	// GV actions
+	private static final String COMBAT = " ... combat!";
+	private static final String RUN_FOR_FLAG = " ... run for flag!";
+	private static final String RUN_HOME_WITH_FLAG = " ... run home with enemy flag!";
+	private static final String GUARDING = " ... guarding home base!";
+	private static final String PICKUP_WEAPONS = " ... pick-up weapons!";
+	private static final String GET_SHOT_CANT_SEE_ENEMY =  " ... get sho and can't see enemy!";
 	
 	// Default defenders locations
 	private int [] defaultPositions;
-	private int [] freePositions = {0, 0, 0, 0, 0, 0};
 	private NavPoint defenderPosition;
 	
 	// NavPoints for CITADEL
@@ -97,7 +102,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	int [] defaultBluePositionBP2 = {35, 23, 41};
 	
     // Target navigation point of bot way
-    private ILocated targetNavPoint = null;
+    private NavPoint targetNavPoint = null;
     
 	// MSGs data for STEALERS
 	// TODO - mandatory variables
@@ -114,7 +119,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 
 	private static int number = 0;
 	private int botNumber;
-	private boolean stealer;
+	private boolean stealer = false;
+	
+	private boolean useCoverPath = false;
+	private boolean usingCoverPath = false;
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -123,7 +131,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	Initialize init = new Initialize();
     	init.setDesiredSkill(skill);
     	init.setTeam(team);
-    	init.setName(team + "_" + getBotName());
+    	init.setName(team + "_" + getBotName() + "_" + botNumber);
         
     	return init;
     }
@@ -258,99 +266,115 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     public void logic() throws PogamutException
     {	    
     	connectionToTC();
-    	
-    	if (stealer)
-    	{
-    		sendMsgToStealers("Nazdar stealers ... !!!");    		
-    	}
-    	else
-    	{
-    		sendMsgToDefenders(0 + ";" + info.getId());    		
-    	}
-    	
+//    	sendMsgToStealers("Nazdar stealers ... !!!");    		
+//    	sendMsgToDefenders(0 + ";" + info.getId());    		
     	recievMsg();
     	
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
-//        	if (combatStealer())
-//        	{
-//        		return;
-//        	}
-//    		
-//        	if (ctf.isEnemyFlagHome())
-//        	{
-//        		runForFlag();
-//        	}
-//        	else if (ctf.isBotCarryingEnemyFlag())
-//        	{
-//        		if (ctf.canBotScore())
-//        		{
-//        			returnHome();        			
-//        		}
-//        		else
-//        		{
-//        			// TODO - useCoverPath
-//        		}
-//        		
-//        		// TODO - send own location for others bots
-//        	}
-//        	else if (!ctf.isEnemyFlagHome() && !ctf.isBotCarryingEnemyFlag())
-//        	{
-//        		// TODO - flag is stealed but this bot doesn't have a flag
-//        		// TODO - compute location of enemy flag and cooperation with other bot
-//        	}
+    		if (stealerBehaviour())
+    		{
+    			return;
+    		}
     	}
     	// ********** CODE FOR DEFENDER
     	else
     	{
-    		if (combatDefender())
+    		if (defenderBehaviour())
     		{
-    			log.info("combat");
     			return;
     		}
-    		
-    		if (ctf.isOurFlagHome())
+    	}
+ 
+    	// ********** CODE FOR NAVIGATION
+    	navigate(targetNavPoint);
+    }
+    
+    private boolean stealerBehaviour()
+    {
+    	if (combatStealer())
+    	{
+    		return true;
+    	}
+		
+    	if (ctf.isEnemyFlagHome())
+    	{
+    		runForFlag();
+    	}
+    	else if (ctf.isBotCarryingEnemyFlag())
+    	{
+    		if (ctf.canBotScore())
     		{
-    			guardingOurBase();
-    			
-    			// TODO - dodelat chovani kdyz je vlajka doma
-    			// TODO - vyresit navigaci kdyz je vlajka doma (dovymyslet)
+    			returnHome();
+    			useCoverPath = false;
     		}
     		else
     		{
-    			// TODO - dodelat chovani kdyz je vlajka ukradena
-    			// TODO - koordinovany pohyb k base nepritele (vymyslet taktiku)
-    			log.info("else");
+    			useCoverPath = true;
     		}
-
-    		navigation.navigate(targetNavPoint);
-    		info.atLocation(targetNavPoint, 30);
+    		
+    		// TODO - send own location for others bots
     	}
- 
+    	else if (!ctf.isEnemyFlagHome() && !ctf.isBotCarryingEnemyFlag())
+    	{
+    		// TODO - flag is stealed but this bot doesn't have a flag
+    		// TODO - compute location of enemy flag and cooperation with other bot
+    	}
+    	
+    	return false;
     }
     
-    private boolean guardingOurBase()
+    private boolean defenderBehaviour()
     {
-//    	if (isBotShotWithoutSeenEnemy())
-//		{
-//			log.info("sho without enemy seeing");
-//			return true;
-//		}
-//		
-//		if (pickupSomeWeapon())
-//		{
-//			log.info("pick up some weapons");
-//			return true;
-//		}
+    	if (combatDefender())
+		{
+			log.info(getName() + COMBAT);
+			return true;
+		}
 		
-		// Go on defenders positions
-		navigate(defenderPosition);
+		if (ctf.isOurFlagHome())
+		{
+			if(guardingOurBase())
+			{
+				log.info(getName() + GUARDING);
+			}
+			
+			// TODO - dodelat chovani kdyz je vlajka doma
+			// TODO - vyresit navigaci kdyz je vlajka doma (dovymyslet)
+		}
+
+		if (!ctf.isOurFlagHome())
+		{
+			// TODO - dodelat chovani kdyz je vlajka ukradena
+			// TODO - koordinovany pohyb k base nepritele (vymyslet taktiku)
+			log.info("else");
+		}
 		
 		return false;
     }
     
-    private boolean isBotShotWithoutSeenEnemy()
+    private boolean guardingOurBase()
+    {
+//    	if (isGetShotWithoutSeenEnemy())
+//		{
+//			log.info(getName() + GET_SHOT_CANT_SEE_ENEMY);
+//			return false;
+//		}
+//		
+//		if (pickupSomeWeapon())
+//		{
+//			log.info(getName() + PICKUP_WEAPONS);
+//			return false;
+//		}
+		
+		// Go on defenders positions
+		targetNavPoint = defenderPosition;
+		
+		return true;
+    }
+    
+    private boolean isGetShotWithoutSeenEnemy()
     {
     	if (senses.isShot())
 		{
@@ -536,7 +560,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
     	{
     		log.info("JSEM BLIZKO NEJAKEHO ITEMU!!! - distance: " + distance + " " + info.getNearestVisibleItem().getType().getName());
-    		navigate(info.getNearestVisibleItem());
+    		targetNavPoint = info.getNearestVisibleItem().getNavPoint();
     		
     		return true;
     	}
@@ -598,22 +622,62 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	
     	// Navigation to enemy base for FLAG
-    	navigate(ctf.getEnemyBase());
+    	targetNavPoint = ctf.getEnemyBase();
     	return true;
     }
     
     private boolean returnHome()
     {
-    	navigate(ctf.getOurBase());
-    	
+    	targetNavPoint = ctf.getOurBase();
         return true;
     }
     
-    private void navigate(ILocated location)
+    private void navigate(NavPoint location)
     {
-    	targetNavPoint = location;
+    	if (useCoverPath)
+    	{
+    		navigationCoverPath(location);
+    	}
+    	else
+    	{
+    		navigationStandard(location);
+    	}
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private void navigationCoverPath(NavPoint location)
+    {
+    	PrecomputedPathFuture<NavPoint> path = generateCoverPath(location);
+    	if (path == null)
+    	{
+    		log.info(getName() + " ... could not generate COVER PATH!");
+    		navigationStandard(location);
+    		return;
+    	}
+    	
+    	log.info(getName() + " ... running along COVER PATH!");
+    	usingCoverPath = true;
+
+    	navigation.navigate((IPathFuture)path);
     }
     
+    private PrecomputedPathFuture<NavPoint> generateCoverPath(NavPoint runningTo) {
+    	NavPoint startNav = info.getNearestNavPoint();
+    	NavPoint targetNav = runningTo;
+    	
+    	AStarResult<NavPoint> result = aStar.findPath(startNav, targetNav, new CoverMapView());
+    	
+    	PrecomputedPathFuture<NavPoint> pathFuture = new PrecomputedPathFuture<NavPoint>(startNav, targetNav, result.getPath());
+    	
+    	return pathFuture;
+    }
+    
+    private void navigationStandard(ILocated location)
+    {
+    	usingCoverPath = false;
+    	navigation.navigate(location); 
+    }
+
     private boolean combatDefender()
     {
     	// BOT is shooting
@@ -691,8 +755,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
             return false;
         }
         
-        navigate(item);
-        
+        targetNavPoint = item.getNavPoint();
         return true;
     }
 
@@ -733,6 +796,52 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	PlayerMessage msg = getPlayer(id);
     	if (msg == null) return id.getStringId();
     	return getPlayer(id).getName();
+    }
+    
+    private class CoverMapView implements IPFMapView<NavPoint> {
+
+		@Override
+		public Collection<NavPoint> getExtraNeighbors(NavPoint node, Collection<NavPoint> mapNeighbors) {
+			return null;
+		}
+
+		@Override
+		public int getNodeExtraCost(NavPoint node, int mapCost) {
+                    int penalty = 0;
+                    
+                    for (Player player : players.getVisiblePlayers().values())
+                    {
+                        if (visibility.isVisible(node, player.getLocation()))
+                        {
+                            penalty += 100;
+                        }
+                    }
+                    return 0;
+		}
+
+		@Override
+		public int getArcExtraCost(NavPoint nodeFrom, NavPoint nodeTo, int mapCost) {
+			return 0;
+		}
+
+		@Override
+		public boolean isNodeOpened(NavPoint node) {
+			// ALL NODES ARE OPENED
+			return true;
+		}
+
+		@Override
+		public boolean isArcOpened(NavPoint nodeFrom, NavPoint nodeTo) {
+			// ALL ARCS ARE OPENED
+	        NavPointNeighbourLink link = nodeFrom.getOutgoingEdges().get(nodeTo.getId());
+	        if ((link.getFlags() & FloydWarshallMap.BAD_EDGE_FLAG) > 0)
+	        {
+	            return false;
+	        }
+                
+			return true;
+		}
+    	
     }
     
     private static void initialize(String [] args) throws Exception
@@ -795,7 +904,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	initialize(args);
     	
     	// Start TC (~ TeamCommunication) Server first...
-    	tcServer = UT2004TCServer.startTCServer();
+    	
+    	tcServer = UT2004TCServer.startTCServer(address, 3001);
+    	//tcServer = UT2004TCServer.startTCServer();
     	// Start bots
         new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(teamBotsCount);       
     }
