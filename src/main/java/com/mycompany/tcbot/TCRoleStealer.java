@@ -1,5 +1,6 @@
 package com.mycompany.tcbot;
 
+import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessageData;
 import cz.cuni.amis.utils.token.IToken;
@@ -15,6 +16,8 @@ public class TCRoleStealer extends TCMessageData
 	private String msg;
 	/** Unreal ID of sender */
 	private UnrealId who;
+	/** Enemy flag location */
+	private ILocated enemyFlagLocation;
 	
 	public TCRoleStealer(UnrealId who, String msg)
 	{
@@ -37,8 +40,16 @@ public class TCRoleStealer extends TCMessageData
 
 	public void setWho(UnrealId who) {
 		this.who = who;
-	}	
+	}
 	
+	public ILocated getEnemyFlagLocation() {
+		return enemyFlagLocation;
+	}
+
+	public void setEnemyFlagLocation(ILocated enemyFlagLocation) {
+		this.enemyFlagLocation = enemyFlagLocation;
+	}
+
 	@Override
 	public String toString()
 	{
