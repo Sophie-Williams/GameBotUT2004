@@ -284,21 +284,19 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		{
     			return;
     		}
-
-    		navigate(targetNavPoint);
     	}
     	// ********** CODE FOR DEFENDER
     	else
     	{
-//    		sendMsgToDefenders("MSG from: " + getName());    		
-//    		if (defenderBehaviour())
-//    		{
-//    			return;
-//    		}
+    		sendMsgToDefenders("MSG from: " + getName());    		
+    		if (defenderBehaviour())
+    		{
+    			return;
+    		}
     	}
  
     	// ********** CODE FOR NAVIGATION
-//    	navigate(targetNavPoint);
+    	navigate(targetNavPoint);
     }
     
     private boolean stealerBehaviour()
@@ -339,8 +337,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		{
     			targetNavPoint = stealedEnemyFlagLocationRecv;
     		}
-    		// TODO - flag is stealed but this bot doesn't have a flag
-    		// TODO - compute location of enemy flag and cooperation with other bot
     	}
     	
     	return false;
@@ -360,16 +356,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			{
 				log.info(info.getName() + GUARDING);
 			}
-			
-			// TODO - dodelat chovani kdyz je vlajka doma
-			// TODO - vyresit navigaci kdyz je vlajka doma (dovymyslet)
 		}
 
 		if (!ctf.isOurFlagHome())
 		{
-			// TODO - dodelat chovani kdyz je vlajka ukradena
-			// TODO - koordinovany pohyb k base nepritele (vymyslet taktiku)
-			log.info("else");
+			targetNavPoint = ctf.getEnemyBase();
+
+			// TODO - preposilani videneho nepritele s vlajkou
 		}
 		
 		return false;
@@ -693,6 +686,11 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// BOT is shooting
     	if (shooting())
     	{
+    		if (players.getNearestVisibleEnemy() != null)
+    		{
+    			targetNavPoint = players.getNearestVisibleEnemy();
+    		}
+    		
     		return true;
     	}
     	
