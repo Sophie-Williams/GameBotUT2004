@@ -18,6 +18,10 @@ public class TCRoleStealer extends TCMessageData
 	private UnrealId who;
 	/** Enemy flag location */
 	private ILocated enemyFlagLocation;
+	/** Bot ID */
+	private int ID;
+	/** Bot location */
+	private ILocated currentLocation;
 	
 	public TCRoleStealer(UnrealId who, String msg)
 	{
@@ -48,6 +52,22 @@ public class TCRoleStealer extends TCMessageData
 
 	public void setEnemyFlagLocation(ILocated enemyFlagLocation) {
 		this.enemyFlagLocation = enemyFlagLocation;
+	}
+	
+	public int getID() {
+		return ID;
+	}
+
+	public void setID(int iD) {
+		ID = iD;
+	}
+
+	public ILocated getCurrentLocation() {
+		return currentLocation;
+	}
+
+	public void setCurrentLocation(ILocated currentLocation) {
+		this.currentLocation = currentLocation;
 	}
 
 	@Override

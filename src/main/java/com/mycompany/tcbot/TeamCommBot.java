@@ -1,10 +1,10 @@
 package com.mycompany.tcbot;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.logging.Level;
 
 import cz.cuni.amis.pathfinding.alg.astar.AStarResult;
@@ -32,7 +32,6 @@ import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.PlayerM
 import cz.cuni.amis.pogamut.ut2004.teamcomm.bot.UT2004BotTCController;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.server.UT2004TCServer;
 import cz.cuni.amis.pogamut.ut2004.utils.UT2004BotRunner;
-import cz.cuni.amis.utils.Cooldown;
 import cz.cuni.amis.utils.exception.PogamutException;
 
 /**
@@ -69,7 +68,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String STEALER = "Stealer";
 	private static final String DEFENDER = "Defender";
 	private static final String PATHNODE = "PathNode";
-	private static final double DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 600;
+	
 	// GV actions
 	private static final String COMBAT = " ... combat!";
 	private static final String RUN_FOR_FLAG = " ... run for flag!";
@@ -111,21 +110,32 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private ILocated stealedEnemyFlagLocationRecv = null;
 	
 	// MSGs data for DEFENDERS
-	private ILocated ourStealedFlagLocation = null;
-	
-	// MSGs data for ALL/TCHello
-	// TODO - mandatory variables/not all
+	private ILocated ourStealedFlagLocationSend = null;
+	private ILocated ourStealedFlagLocationRecv = null;
 	
 	// TMP msg for showing communication between Bots
-	private Map<UnrealId, TCRoleDefender> defenders;
-	private Map<UnrealId, TCRoleStealer> stealers;
+	private TreeMap<Integer, TCRoleDefender> defenders;
+	private TreeMap<Integer, TCRoleStealer> stealers;
 
+	// Weapons ranges
+	private static final int RANGE_LOW = 50;
+    private static final int RANGE_MIDDLE = 500;
+    private static final int RANGE_HIGH = 1000;
+    private static final int RANGE_SUPERHIGH = 4000;
+    private static final int DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 600;
+	
 	private static int number = 0;
 	private int botNumber;
 	private boolean stealer = false;
 	
 	private boolean useCoverPath = false;
 	private boolean usingCoverPath = false;
+	
+	private ILocated ourFlagLocationOrigin;
+	private ILocated enemyFlagLocationOrigin;
+	
+	private int mainStealer;
+	private int mainDefender;
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -157,13 +167,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
         weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
         
-        weaponPrefs.newPrefsRange(50)
+        weaponPrefs.newPrefsRange(RANGE_LOW)
         .add(UT2004ItemType.SHIELD_GUN, true);
 		// Only one weapon is added to this close combat range and it is SHIELD GUN		
 			
 		// Second range class is from 80 to 1000 ut units (its always from the previous class to the maximum
 		// distance of actual class
-		weaponPrefs.newPrefsRange(500)
+		weaponPrefs.newPrefsRange(RANGE_MIDDLE)
 		        .add(UT2004ItemType.FLAK_CANNON, true)
 		        .add(UT2004ItemType.MINIGUN, true)
 		        .add(UT2004ItemType.LINK_GUN, false)
@@ -171,14 +181,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		// More weapons are in this class with FLAK CANNON having the top priority		
 				
 		// Third range class is from 1000 to 4000 ut units - that's quite far actually
-		weaponPrefs.newPrefsRange(2000)
+		weaponPrefs.newPrefsRange(RANGE_HIGH)
 		        .add(UT2004ItemType.SHOCK_RIFLE, true)
 		        .add(UT2004ItemType.MINIGUN, false);
 		// Two weapons here with SHOCK RIFLE being the top
 				
 		// The last range class is from 4000 to 100000 ut units. In practise 100000 is
 		// the same as infinity as there is no map in UT that big
-		weaponPrefs.newPrefsRange(50000)
+		weaponPrefs.newPrefsRange(RANGE_SUPERHIGH)
 		        .add(UT2004ItemType.LIGHTNING_GUN, true)
 		        .add(UT2004ItemType.SHOCK_RIFLE, true);  	  
 		// Only two weapons here, both good at sniping
@@ -193,7 +203,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (stealers != null)
     	{
-    		stealers.put(hello.getWho(), hello);
+    		stealers.put(hello.getID(), hello);
     	}
     	
     	if (hello.getEnemyFlagLocation() != null)
@@ -207,7 +217,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (defenders != null)
     	{
-    		defenders.put(hello.getWho(), hello);
+    		defenders.put(hello.getID(), hello);
+    	}
+    	
+    	if (hello.getOuFlagLocation() != null)
+    	{
+    		ourStealedFlagLocationRecv = hello.getOuFlagLocation();
     	}
 	}
     
@@ -215,9 +230,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     // LOGIC
     // =====
     
-    Cooldown msgCooldown = new Cooldown(3000);
     int msgNum = 0;
-    
     int myChannelId = -1;
     
     @Override
@@ -261,13 +274,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		log.info("Bots are not configured for map " + game.getMapName() + "!");
     	}
     	
-    	defenders = new HashMap<UnrealId, TCRoleDefender>();
-    	stealers = new HashMap<UnrealId, TCRoleStealer>();
+    	defenders = new TreeMap<Integer, TCRoleDefender>();
+    	stealers = new TreeMap<Integer, TCRoleStealer>();
     	
     	if (!stealer)
     	{
     		defenderPosition = navPoints.getNavPoint(PATHNODE + defaultPositions[botNumber - 1]);
     	}
+    	
+    	ourFlagLocationOrigin = ctf.getOurFlag().getLocation();
+    	enemyFlagLocationOrigin = ctf.getEnemyFlag().getLocation();
     }
     
     @Override
@@ -280,6 +296,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (stealer)
     	{
     		sendMsgToStealers("MSG from: " + getName());    		
+    		mainStealer = stealers.firstKey();
+
     		if (stealerBehaviour())
     		{
     			return;
@@ -289,6 +307,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	else
     	{
     		sendMsgToDefenders("MSG from: " + getName());    		
+    		mainDefender = defenders.firstKey();
+    		
     		if (defenderBehaviour())
     		{
     			return;
@@ -360,9 +380,17 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 
 		if (!ctf.isOurFlagHome())
 		{
-			targetNavPoint = ctf.getEnemyBase();
-
-			// TODO - preposilani videneho nepritele s vlajkou
+			// TODO - ulozit ve beforeFirstLogic originalni pozici souperovo vlajky
+			// TODO - kdyz obrance uvidi souperovu vlaku, sebere ji a odnese domu
+			
+			if (ourFlagLocationOrigin != ctf.getOurFlag().getLocation())
+			{
+				targetNavPoint = ctf.getOurFlag().getLocation();
+			}
+			else
+			{
+				targetNavPoint = ctf.getEnemyBase();				
+			}
 		}
 		
 		return false;
@@ -414,6 +442,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	TCRoleStealer stealer = new TCRoleStealer(info.getId(), msg);
     	// MSG set variables
     	stealer.setEnemyFlagLocation(stealedEnemyFlagLocationSend);
+    	stealer.setID(botNumber);
+    	stealer.setCurrentLocation(info.getLocation());
     	
     	// MSG send
     	tcClient.sendToTeam(stealer);
@@ -424,6 +454,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// MSG Init
     	TCRoleDefender defender = new TCRoleDefender(info.getId(), msg);
     	// MSG set variables
+    	defender.setOuFlagLocation(ourStealedFlagLocationSend);
+    	defender.setID(botNumber);
+    	defender.setCurrentLocation(info.getLocation());
     	
     	// MSG send
     	tcClient.sendToTeam(defender);
@@ -504,9 +537,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		// BOT can see enemies
 		if (players.canSeeEnemies())
     	{
-			// SHOCK_RIFLE or LIGHTNING_GUN shooting ...
-			if (info.getCurrentWeaponType().equals(UT2004ItemType.SHOCK_RIFLE)
-					|| info.getCurrentWeaponType().equals(UT2004ItemType.LIGHTNING_GUN))
+			if ((info.getCurrentWeaponType().equals(UT2004ItemType.SHOCK_RIFLE)
+					&& weaponry.hasAmmoForWeapon(UT2004ItemType.SHOCK_RIFLE))
+					|| (info.getCurrentWeaponType().equals(UT2004ItemType.LIGHTNING_GUN)
+					&& weaponry.hasAmmoForWeapon(UT2004ItemType.LIGHTNING_GUN)))
 			{
 				if (navigation.isNavigating())
 				{
@@ -519,9 +553,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());	
 				}
 			}
-			else
+			
+			if (RANGE_HIGH < fwMap.getDistance(navigation.getNearestNavPoint(players.getNearestVisibleEnemy()), info.getNearestNavPoint()))
 			{
-				// Another weapon shooting
 				if (move.isRunning())
 				{
 					move.setWalk();					
