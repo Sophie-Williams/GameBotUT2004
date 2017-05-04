@@ -46,7 +46,7 @@ public class TCRoleDefender extends TCMessageData
 		this.who = who;
 	}	
 	
-	public ILocated getOuFlagLocation() {
+	public ILocated getOurFlagLocation() {
 		return ouFlagLocation;
 	}
 

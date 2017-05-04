@@ -113,8 +113,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private ILocated stealedEnemyFlagLocationRecv = null;
 	
 	// MSGs data for DEFENDERS
-	private ILocated ourStealedFlagLocationSend = null;
-	private ILocated ourStealedFlagLocationRecv = null;
+	private ILocated stealedOurFlagLocationSend = null;
+	private ILocated stealedOurFlagLocationRecv = null;
 	
 	// TMP msg for showing communication between Bots
 	private TreeMap<Integer, TCRoleDefender> defenders;
@@ -225,9 +225,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		defenders.put(hello.getID(), hello);
     	}
     	
-    	if (hello.getOuFlagLocation() != null)
+    	if (hello.getOurFlagLocation() != null)
     	{
-    		ourStealedFlagLocationRecv = hello.getOuFlagLocation();
+    		stealedOurFlagLocationRecv = hello.getOurFlagLocation();
     	}
 	}
     
@@ -355,7 +355,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (combatStealer())
     	{
     		bot.getBotName().setInfo(COMBAT);
-//    		return true;
     	}
 		// STEALER *** RUN FOR FLAG
     	if (ctf.isEnemyFlagHome())
@@ -407,15 +406,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     
     private boolean scoreIfIsItPossible()
     {
-    	if (ctf.canBotScore())
-		{
-			returnHome();
-			useCoverPath = false;
-		}
-		else
-		{
-			useCoverPath = true;
-		}
+    	returnHome();
+//    	if (ctf.canBotScore())
+//		{
+//			returnHome();
+//			useCoverPath = false;
+//		}
+//		else
+//		{
+//			useCoverPath = true;
+//		}
     	
     	stealedEnemyFlagLocationSend = info.getNearestNavPoint().getLocation();
     	return useCoverPath;
@@ -425,9 +425,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (combatDefender())
 		{
-    		// TODO - nebezet za souperem pokud nema nasi vlajku !!!
 			bot.getBotName().setInfo(COMBAT);
-//			return true;
 		}
 		
 		if (ctf.isOurFlagHome())
@@ -444,6 +442,19 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			{
 				bot.getBotName().setInfo(ENEMY_STEALERS_SEE);
 				targetNavPoint = ctf.getOurFlag().getLocation();
+				stealedOurFlagLocationSend = ctf.getOurFlag().getLocation();
+				
+				if (info.getLocation().equals(targetNavPoint))
+				{
+					if (stealedOurFlagLocationRecv != null)
+					{
+						targetNavPoint = stealedOurFlagLocationRecv;						
+					}
+					else
+					{
+						targetNavPoint = ctf.getEnemyBase();
+					}
+				}
 			}
 			else
 			{
@@ -472,20 +483,26 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     
     private boolean guardingOurBase()
     {
-    	if (isGetShotWithoutSeenEnemy())
-		{
-    		bot.getBotName().setInfo(GET_SHOT_CANT_SEE_ENEMY);
-			return false;
-		}
-		
-		if (pickupSomeWeapon())
-		{
-			bot.getBotName().setInfo(PICKUP_WEAPONS);
-			return false;
-		}
-		
-		// Go on defenders positions
-		targetNavPoint = defenderPosition;
+    	if (!players.canSeeEnemies())
+    	{
+    		if (isGetShotWithoutSeenEnemy())
+    		{
+    			bot.getBotName().setInfo(GET_SHOT_CANT_SEE_ENEMY);
+    			return false;
+    		}
+    		if (pickupSomeWeapon())
+    		{
+    			bot.getBotName().setInfo(PICKUP_WEAPONS);
+    			return false;
+    		}    		
+    		
+    		// Go on defenders positions
+    		targetNavPoint = defenderPosition;
+    	}
+    	else
+    	{
+    		targetNavPoint = ctf.getOurFlag().getLocation();
+    	}
 		
 		return true;
     }
@@ -528,7 +545,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// MSG Init
     	TCRoleDefender defender = new TCRoleDefender(info.getId(), msg);
     	// MSG set variables
-    	defender.setOuFlagLocation(ourStealedFlagLocationSend);
+    	defender.setOuFlagLocation(stealedOurFlagLocationSend);
     	defender.setID(botNumber);
     	defender.setCurrentLocation(info.getLocation());
     	
