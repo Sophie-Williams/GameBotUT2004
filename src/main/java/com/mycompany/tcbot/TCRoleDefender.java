@@ -2,6 +2,8 @@ package com.mycompany.tcbot;
 
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessageData;
 import cz.cuni.amis.utils.token.IToken;
 import cz.cuni.amis.utils.token.Tokens;
@@ -22,6 +24,8 @@ public class TCRoleDefender extends TCMessageData
 	private int ID;
 	/** Bot location */
 	private ILocated currentLocation;
+	/** Spawned item id */
+	private UnrealId itemId;
 	
 	public TCRoleDefender(UnrealId who, String msg)
 	{
@@ -68,6 +72,14 @@ public class TCRoleDefender extends TCMessageData
 
 	public void setCurrentLocation(ILocated currentLocation) {
 		this.currentLocation = currentLocation;
+	}
+
+	public UnrealId getItemId() {
+		return itemId;
+	}
+
+	public void setItemId(UnrealId itemId) {
+		this.itemId = itemId;
 	}
 
 	@Override
