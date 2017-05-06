@@ -24,8 +24,6 @@ public class TCRoleDefender extends TCMessageData
 	private int ID;
 	/** Bot location */
 	private ILocated currentLocation;
-	/** Spawned item id */
-	private UnrealId itemId;
 	
 	public TCRoleDefender(UnrealId who, String msg)
 	{
@@ -72,14 +70,6 @@ public class TCRoleDefender extends TCMessageData
 
 	public void setCurrentLocation(ILocated currentLocation) {
 		this.currentLocation = currentLocation;
-	}
-
-	public UnrealId getItemId() {
-		return itemId;
-	}
-
-	public void setItemId(UnrealId itemId) {
-		this.itemId = itemId;
 	}
 
 	@Override

@@ -130,7 +130,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private static final int RANGE_MIDDLE = 500;
     private static final int RANGE_HIGH = 1000;
     private static final int RANGE_SUPERHIGH = 4000;
-    private static final int DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 600;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_FLAGSTEALER = 600;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 1000;
 	
 	private static int number = 0;
 	private int botNumber;
@@ -145,10 +146,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private Heatup pursueEnemy = new Heatup(3000);
 	private UnrealId visibleSpawnedItemSend;
 	
-	private Set<UnrealId> itemsWeaponsRecvd = new HashSet<UnrealId>();
-	private Set<UnrealId> itemsAmmoRecvd = new HashSet<UnrealId>();
-	private Set<UnrealId> itemsHealthRecvd = new HashSet<UnrealId>();
-
     @Override
     public Initialize getInitializeCommand() {
     	botNumber = ++number;
@@ -235,23 +232,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (hello.getOurFlagLocation() != null)
     	{
     		stealedOurFlagLocationRecv = hello.getOurFlagLocation();
-    	}
-    	
-    	if (hello.getItemId() != null)
-    	{
-    		Category c = items.getItem(hello.getItemId()).getDescriptor().getItemCategory();
-    		if (Category.WEAPON.equals(c))
-    		{
-    			itemsWeaponsRecvd.add(hello.getItemId());
-    		}
-    		if (Category.AMMO.equals(c))
-    		{
-    			itemsAmmoRecvd.add(hello.getItemId());
-    		}
-    		if (Category.HEALTH.equals(c))
-    		{
-    			itemsHealthRecvd.add(hello.getItemId());
-    		}
     	}
 	}
     
@@ -360,6 +340,83 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// TODO - pouzivat heatup a cooldown = prodlouzeni akce
     	// TODO - zkusit vzdy bezet naplno
     	// TODO - zkusit prenastavit coverpath
+    }
+    
+    private boolean pickUpItemsViaDistanceAndCategory()
+    {
+    	if (info.getHealth() < 100)
+    	{
+    		if (pickUpNearestHealth())
+    		{
+    			return true;
+    		}
+    	}
+
+    	if (pickUpNearestWeapon())
+    	{
+    		return true;
+    	}
+		
+		return false;
+    }
+    
+    private boolean pickUpNearestHealth()
+    {
+    	// health
+    	Double nearestDistance = Double.MAX_VALUE;
+    	
+    	for (Map.Entry<UnrealId, Item> it : items.getAllItems(Category.HEALTH).entrySet())
+		{
+			Double itemDistance = fwMap.getDistance(info.getNearestNavPoint(), it.getValue().getNavPoint());
+			if (itemDistance < DISTANCE_PICK_UP_ITEM_FOR_DEFENDER)
+			{
+				if (itemDistance < nearestDistance)
+				{
+					nearestDistance = itemDistance;
+					targetNavPoint = it.getValue().getLocation();
+				}
+			}
+		}
+		
+		if (nearestDistance != Double.MAX_VALUE)
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+    }
+    
+    private boolean pickUpNearestWeapon()
+    {
+    	Map<UnrealId, Item> weapons = items.getAllItems(Category.WEAPON);
+    	Double nearestDistance = Double.MAX_VALUE;
+    	
+    	for (Map.Entry<UnrealId, Item> weapon : weapons.entrySet())
+    	{
+    		if (!weaponry.hasWeapon(weapon.getValue().getType()))
+    		{
+    			Double itemDistance = fwMap.getDistance(info.getNearestNavPoint(), weapon.getValue().getNavPoint());
+    			if (itemDistance < DISTANCE_PICK_UP_ITEM_FOR_DEFENDER)
+    			{
+    				if (itemDistance < nearestDistance)
+    				{
+    					nearestDistance = itemDistance;
+    					targetNavPoint = weapon.getValue().getLocation();
+    				}
+    			}
+    		}
+    	}
+    	
+    	if (nearestDistance != Double.MAX_VALUE)
+    	{
+    		return true;
+    	}
+    	else
+    	{
+    		return false;
+    	}
     }
     
     private void notMoveTurnAround()
@@ -500,7 +557,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (!players.canSeeEnemies())
     	{
-    		if (getItemViaDistanceAndUrgentHealth())
+    		//if (getItemViaDistanceAndUrgentHealth())
+    		if (pickUpItemsViaDistanceAndCategory())
     		{
     			bot.getBotName().setInfo(PICKUP_WEAPONS);
     			return false;
@@ -563,11 +621,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	defender.setOuFlagLocation(stealedOurFlagLocationSend);
     	defender.setID(botNumber);
     	defender.setCurrentLocation(info.getLocation());
-    	
-    	if (visibleSpawnedItemSend != null)
-    	{
-    		defender.setItemId(visibleSpawnedItemSend);
-    	}
     	
     	// MSG send
     	tcClient.sendToTeam(defender);
@@ -707,7 +760,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		distance = info.getDistance(item);
     	}
     	  	
-    	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
+    	if (distance < DISTANCE_PICK_UP_ITEM_FOR_FLAGSTEALER)
     	{
     		if (stealer)
     		{
@@ -725,43 +778,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	
     	return false;
     }
-    
-    /**
-     * Translates 'types' to the set of "nearest spawned items" of those 'types'.
-     * @param types
-     * @return
-     */
-    private Set<Item> getNearestSpawnedItems(Collection<UT2004ItemType> types) {
-    	Set<Item> result = new HashSet<Item>();
-    	for (UT2004ItemType type : types) {
-    		Item n = getNearestSpawnedItem(type);
-    		if (n != null) {
-    			result.add(n);
-    		}
-    	}
-    	return result;
-    }
-    
-    /**
-     * Returns the nearest spawned item of 'type'.
-     * @param type
-     * @return
-     */
-    private Item getNearestSpawnedItem(UT2004ItemType type) {
-    	final NavPoint nearestNavPoint = info.getNearestNavPoint();
-    	Item nearest = DistanceUtils.getNearest(
-    			items.getSpawnedItems(type).values(), 
-    			info.getNearestNavPoint(),
-    			new DistanceUtils.IGetDistance<Item>() {
-					@Override
-					public double getDistance(Item object, ILocated target) {
-						return fwMap.getDistance(object.getNavPoint(), nearestNavPoint);
-					}
-    		
-    	});
-    	return nearest;
-    }
-    
+
     private boolean runForFlag()
     {
     	if (getItemViaDistanceAndUrgentHealth())
@@ -810,17 +827,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	return false;
     }
 
-    private PrecomputedPathFuture<NavPoint> generateCoverPath(ILocated runningTo) {
-    	NavPoint startNav = info.getNearestNavPoint();
-    	NavPoint targetNav = navigation.getNearestNavPoint(runningTo);
-    	
-    	AStarResult<NavPoint> result = aStar.findPath(startNav, targetNav, new CoverMapView());
-    	
-    	PrecomputedPathFuture<NavPoint> pathFuture = new PrecomputedPathFuture<NavPoint>(startNav, targetNav, result.getPath());
-    	
-    	return pathFuture;
-    }
-    
     private void navigationStandard(ILocated location)
     {
     	navigation.navigate(location); 
@@ -847,35 +853,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private boolean needHealthUrgent()
     {
         return info.getHealth() < 20 || (info.getHealth() + info.getArmor()) < 40;
-    }
-    
-    private boolean pickupSomeWeapon()
-    {
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.SHOCK_RIFLE))
-        {
-            if (navigateToItemType(UT2004ItemType.SHOCK_RIFLE))
-            {
-            	return true;
-            }
-        }
-        
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.MINIGUN))
-        {
-            if (navigateToItemType(UT2004ItemType.MINIGUN))
-            {
-            	return true;
-            }
-        }
-        
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN))
-        {
-            if (navigateToItemType(UT2004ItemType.LINK_GUN))
-            {
-            	return true;
-            }
-        }
-        
-        return false;
     }
     
     private boolean pickupNearestHealth()
@@ -950,52 +927,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	PlayerMessage msg = getPlayer(id);
     	if (msg == null) return id.getStringId();
     	return getPlayer(id).getName();
-    }
-    
-    private class CoverMapView implements IPFMapView<NavPoint> {
-
-		@Override
-		public Collection<NavPoint> getExtraNeighbors(NavPoint node, Collection<NavPoint> mapNeighbors) {
-			return null;
-		}
-
-		@Override
-		public int getNodeExtraCost(NavPoint node, int mapCost) {
-                    int penalty = 0;
-                    
-                    for (Player player : players.getVisiblePlayers().values())
-                    {
-                        if (visibility.isVisible(node, player.getLocation()))
-                        {
-                            penalty += 100;
-                        }
-                    }
-                    return 0;
-		}
-
-		@Override
-		public int getArcExtraCost(NavPoint nodeFrom, NavPoint nodeTo, int mapCost) {
-			return 0;
-		}
-
-		@Override
-		public boolean isNodeOpened(NavPoint node) {
-			// ALL NODES ARE OPENED
-			return true;
-		}
-
-		@Override
-		public boolean isArcOpened(NavPoint nodeFrom, NavPoint nodeTo) {
-			// ALL ARCS ARE OPENED
-	        NavPointNeighbourLink link = nodeFrom.getOutgoingEdges().get(nodeTo.getId());
-	        if ((link.getFlags() & FloydWarshallMap.BAD_EDGE_FLAG) > 0)
-	        {
-	            return false;
-	        }
-                
-			return true;
-		}
-    	
     }
     
     private static void initialize(String [] args) throws Exception
