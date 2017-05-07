@@ -1,8 +1,10 @@
 package com.mycompany.tcbot;
 
+import java.awt.Color;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -84,6 +86,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String GET_SHOT_CANT_SEE_ENEMY =  " ... get sho and can't see enemy!";
 	private static final String ENEMY_STEALERS_SEE = " ... see stolen flag!";
 	private static final String ENEMY_STEALERS_CANNOT_SEE = " ... some enemy stolen flag!";
+	private static final String PICKUP_HEALT = " ... pick up health!";
+	private static final String PICKUP_WEAPON = " ... pick up weapon!";
+	private static final String PICKUP_AMMO = " ... pick up ammo!";
 	
 	// Default defenders locations
 	private int [] defaultPositions;
@@ -131,7 +136,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private static final int RANGE_HIGH = 1000;
     private static final int RANGE_SUPERHIGH = 4000;
     private static final int DISTANCE_PICK_UP_ITEM_FOR_FLAGSTEALER = 600;
-    private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 1000;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 1500;
 	
 	private static int number = 0;
 	private int botNumber;
@@ -334,6 +339,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	navigate(targetNavPoint);
     	notMoveTurnAround();
     	
+    	List<NavPoint> nearest = fwMap.getPath(info.getNearestNavPoint(), navigation.getNearestNavPoint(targetNavPoint));
+    	draw.clearAll();
+    	drawPath(nearest, Color.WHITE);
     	
     	// TODO - nastavit sber zbrani podle vzdalenosti pro defendera - momentalne to bere moc casu
     	// TODO - pridat sber munice kdyz nemas (jinak nestrili)
@@ -348,16 +356,38 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	{
     		if (pickUpNearestHealth())
     		{
+    			bot.getBotName().setInfo(PICKUP_HEALT);
     			return true;
     		}
     	}
 
     	if (pickUpNearestWeapon())
     	{
+    		bot.getBotName().setInfo(PICKUP_WEAPON);
+    		return true;
+    	}
+    	
+    	if (pickUpNearestAmmo())
+    	{
+    		bot.getBotName().setInfo(PICKUP_AMMO);
     		return true;
     	}
 		
 		return false;
+    }
+    
+    private boolean pickUpNearestAmmo()
+    {
+    	Item item = items.getNearestVisibleItem(Category.AMMO);
+    	
+    	if (item != null
+    			&& fwMap.getDistance(info.getNearestNavPoint(), item.getNavPoint()) < DISTANCE_PICK_UP_ITEM_FOR_DEFENDER)
+    	{
+    		targetNavPoint = item.getLocation();
+    		return true;
+    	}
+    	
+    	return false;
     }
     
     private boolean pickUpNearestHealth()
@@ -560,7 +590,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		//if (getItemViaDistanceAndUrgentHealth())
     		if (pickUpItemsViaDistanceAndCategory())
     		{
-    			bot.getBotName().setInfo(PICKUP_WEAPONS);
     			return false;
     		}    		
     		if (isGetShotWithoutSeenEnemy())
@@ -982,6 +1011,15 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	
     	return tmp;
+    }
+    
+    private void drawPath(List<? extends ILocated> path, Color color) {
+    	log.warning("DRAWING PATH, size = " + path.size());
+    	draw.setColor(color);
+    	for (int i = 1; i < path.size(); ++i) {
+    		draw.drawLine(path.get(i-1),  path.get(i));
+    	}
+    	log.warning("PATH DRAWN!");
     }
     
     public static void main(String args[]) throws PogamutException, Exception
