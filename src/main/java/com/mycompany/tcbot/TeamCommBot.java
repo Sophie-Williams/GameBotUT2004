@@ -599,55 +599,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     					}
     				}
     			}
-    			
-//    			if (ctf.getEnemyFlag().getLocation() != null)
-//        		{
-//    				// TODO
-//    				bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
-//        			targetNavPoint = ctf.getEnemyFlag().getLocation();
-//        		}
-//    			else
-//    			{
-//    				if (stolenEnemyFlagLocationRecv != null)
-//    				{
-//    					bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
-//    					targetNavPoint = stolenEnemyFlagLocationRecv;
-//    				}
-//    				else
-//    				{
-//    					if (!ctf.isOurFlagHome())
-//    					{
-//    						searchOurFlag();    						
-//    					}
-//    					else
-//    					{
-//    						bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_FALSE);
-//    						targetNavPoint = ctf.getOurBase().getLocation();    						    						
-//    					}
-//    				}
-//    			}
-    			
-//    			if (ctf.canOurTeamScore())
-//    			{
-//    				if (stolenEnemyFlagLocationRecv != null)
-//    				{
-//    					bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
-//    					targetNavPoint = stolenEnemyFlagLocationRecv;
-//    				}
-//    				else
-//    				{
-//    					bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_TRUE);
-//    					targetNavPoint = ctf.getOurBase().getLocation();
-//    				}
-//    			}
-//    			else
-//    			{
-//    				bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_FALSE);
-//    				searchOurFlag();
-//    			}
     		}
     	}
-    	
     	
     	return false;
     }
