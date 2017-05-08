@@ -1,30 +1,29 @@
 package com.mycompany.tcbot;
 
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
-import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessageData;
 import cz.cuni.amis.utils.token.IToken;
 import cz.cuni.amis.utils.token.Tokens;
 
-public class TCRoleStealer extends TCMessageData
+public class TeamComm extends TCMessageData
 {
 	/** Auto-generated */
-	private static final long serialVersionUID = -1212205253254994018L;
+	private static final long serialVersionUID = -708788479826875219L;
 	/** Message type */
-	public static final IToken MESSAGE_TYPE = Tokens.get("Stealer");
+	public static final IToken MESSAGE_TYPE = Tokens.get("TeamComm");
 	/** Send / reciev message */
 	private String msg;
 	/** Unreal ID of sender */
 	private UnrealId who;
 	/** Enemy flag location */
-	private Location enemyFlagLocation;
-	/** Bot ID */
-	private int ID;
+	private ILocated enemyFlagLocation;
 	/** Bot location */
-	private Location currentLocation;
+	private ILocated ourFlagLocation;
+	/** Bot location */
+	private ILocated currentLocation;
 	
-	public TCRoleStealer(UnrealId who, String msg)
+	public TeamComm(UnrealId who, String msg)
 	{
 		super(MESSAGE_TYPE);
 		this.who = who;
@@ -46,34 +45,28 @@ public class TCRoleStealer extends TCMessageData
 	public void setWho(UnrealId who) {
 		this.who = who;
 	}
-	
-	public Location getEnemyFlagLocation() {
+
+	public ILocated getEnemyFlagLocation() {
 		return enemyFlagLocation;
 	}
 
-	public void setEnemyFlagLocation(Location enemyFlagLocation) {
+	public void setEnemyFlagLocation(ILocated enemyFlagLocation) {
 		this.enemyFlagLocation = enemyFlagLocation;
 	}
-	
-	public int getID() {
-		return ID;
+
+	public ILocated getOurFlagLocation() {
+		return ourFlagLocation;
 	}
 
-	public void setID(int iD) {
-		ID = iD;
+	public void setOurFlagLocation(ILocated ourFlagLocation) {
+		this.ourFlagLocation = ourFlagLocation;
 	}
 
 	public ILocated getCurrentLocation() {
 		return currentLocation;
 	}
 
-	public void setCurrentLocation(Location currentLocation) {
+	public void setCurrentLocation(ILocated currentLocation) {
 		this.currentLocation = currentLocation;
-	}
-
-	@Override
-	public String toString()
-	{
-		return msg;
 	}
 }

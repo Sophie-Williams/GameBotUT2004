@@ -1,6 +1,7 @@
 package com.mycompany.tcbot;
 
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
@@ -19,11 +20,11 @@ public class TCRoleDefender extends TCMessageData
 	/** Unreal ID of sender */
 	private UnrealId who;
 	/** Our stealed flag location */
-	private ILocated ouFlagLocation;
+	private Location ouFlagLocation;
 	/** Bot ID */
 	private int ID;
 	/** Bot location */
-	private ILocated currentLocation;
+	private Location currentLocation;
 	
 	public TCRoleDefender(UnrealId who, String msg)
 	{
@@ -48,11 +49,11 @@ public class TCRoleDefender extends TCMessageData
 		this.who = who;
 	}	
 	
-	public ILocated getOurFlagLocation() {
+	public Location getOurFlagLocation() {
 		return ouFlagLocation;
 	}
 
-	public void setOuFlagLocation(ILocated ouFlagLocation) {
+	public void setOurFlagLocation(Location ouFlagLocation) {
 		this.ouFlagLocation = ouFlagLocation;
 	}
 	
@@ -68,7 +69,7 @@ public class TCRoleDefender extends TCMessageData
 		return currentLocation;
 	}
 
-	public void setCurrentLocation(ILocated currentLocation) {
+	public void setCurrentLocation(Location currentLocation) {
 		this.currentLocation = currentLocation;
 	}
 
