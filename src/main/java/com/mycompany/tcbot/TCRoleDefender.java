@@ -20,11 +20,13 @@ public class TCRoleDefender extends TCMessageData
 	/** Unreal ID of sender */
 	private UnrealId who;
 	/** Our stealed flag location */
-	private Location ouFlagLocation;
+	private Location ourFlagLocation;
 	/** Bot ID */
 	private int ID;
 	/** Bot location */
 	private Location currentLocation;
+	/** Nearest enemy bot location */
+	private Location nearestEnemyBotLocation;
 	
 	public TCRoleDefender(UnrealId who, String msg)
 	{
@@ -50,11 +52,11 @@ public class TCRoleDefender extends TCMessageData
 	}	
 	
 	public Location getOurFlagLocation() {
-		return ouFlagLocation;
+		return ourFlagLocation;
 	}
 
 	public void setOurFlagLocation(Location ouFlagLocation) {
-		this.ouFlagLocation = ouFlagLocation;
+		this.ourFlagLocation = ouFlagLocation;
 	}
 	
 	public int getID() {
@@ -71,6 +73,14 @@ public class TCRoleDefender extends TCMessageData
 
 	public void setCurrentLocation(Location currentLocation) {
 		this.currentLocation = currentLocation;
+	}
+
+	public Location getNearestEnemyBotLocation() {
+		return nearestEnemyBotLocation;
+	}
+
+	public void setNearestEnemyBotLocation(Location nearestEnemyBotLocation) {
+		this.nearestEnemyBotLocation = nearestEnemyBotLocation;
 	}
 
 	@Override

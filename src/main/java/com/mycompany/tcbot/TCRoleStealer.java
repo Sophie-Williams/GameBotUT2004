@@ -19,6 +19,8 @@ public class TCRoleStealer extends TCMessageData
 	private UnrealId who;
 	/** Enemy flag location */
 	private Location enemyFlagLocation;
+	/** Our stealed flag location */
+	private Location ourFlagLocation;
 	/** Bot ID */
 	private int ID;
 	/** Bot location */
@@ -69,6 +71,14 @@ public class TCRoleStealer extends TCMessageData
 
 	public void setCurrentLocation(Location currentLocation) {
 		this.currentLocation = currentLocation;
+	}
+
+	public Location getOurFlagLocation() {
+		return ourFlagLocation;
+	}
+
+	public void setOurFlagLocation(Location ouFlagLocation) {
+		this.ourFlagLocation = ouFlagLocation;
 	}
 
 	@Override
