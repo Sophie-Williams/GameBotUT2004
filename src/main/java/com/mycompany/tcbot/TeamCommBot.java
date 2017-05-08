@@ -10,7 +10,6 @@ import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
 import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.module.sensomotoric.Weapon;
-import cz.cuni.amis.pogamut.ut2004.agent.module.sensor.NavPoints;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType.Category;
@@ -75,7 +74,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String PICKUP_HEALT = " ... pick up health!";
 	private static final String PICKUP_WEAPON = " ... pick up weapon!";
 	private static final String PICKUP_AMMO = " ... pick up ammo!";
-	private static final String RUN_TO_TEAMMATE = " ... run to a teammate!";
+	private static final String RUN_BEHIND_FLAG_INVISIBLE = " ... run behind flag! (INVISIBLE)";
+	private static final String RUN_BEHIND_FLAG_VISIBLE = " ... run behind flag! (VISIBLE)";
 	private static final String WANT_KILL_ENEMY_STEALER_TRUE = " ... want kill enemy stealer! (score = TRUE)";
 	private static final String WANT_KILL_ENEMY_STEALER_FALSE = " ... want kill enemy stealer! (score = FALSE)";
 	
@@ -126,7 +126,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private static final int RANGE_MIDDLE = 500;
     private static final int RANGE_HIGH = 1000;
     private static final int RANGE_SUPERHIGH = 4000;
-    private static final int DISTANCE_PICK_UP_ITEM_FOR_STEALER = 500;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_STEALER = 800;
     private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 4000;
 	
 	private static int number = 0;
@@ -147,6 +147,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	return init;
     }
 
+    @Override
+    public void mapInfoObtained()
+    {
+    	// Remove some edges
+        removeEdgesAccordingMaps(game.getMapName());
+    }
+    
     @Override
     public void botInitialized(GameInfo gameInfo, ConfigChange config, InitedMessage init) {
     	bot.getLogger().getCategory("Yylex").setLevel(Level.OFF);
@@ -181,6 +188,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		// distance of actual class
 		weaponPrefs.newPrefsRange(RANGE_MIDDLE)
 		.add(UT2004ItemType.SHOCK_RIFLE, false)
+		.add(UT2004ItemType.BIO_RIFLE, true)
 		.add(UT2004ItemType.LINK_GUN, true)
 		.add(UT2004ItemType.FLAK_CANNON, true)
         .add(UT2004ItemType.MINIGUN, false)
@@ -215,8 +223,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	{
     		stealers.put(hello.getID(), hello);
     	}
-    	stolenEnemyFlagLocationRecv = hello.getEnemyFlagLocation();
-    	stolenOurFlagLocationRecv = hello.getOurFlagLocation();
 	}
     
     @EventListener(eventClass=TCRoleDefender.class)
@@ -226,7 +232,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	{
     		defenders.put(hello.getID(), hello);
     	}
-    	stolenOurFlagLocationRecv = hello.getOurFlagLocation();
+    	
     	nearestEnemyBotLocationRecv = hello.getNearestEnemyBotLocation();
 	}
     
@@ -290,12 +296,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     @Override
     public void logic() throws PogamutException
     {	    
-    	//Navpoints.removeedge
-    	//Removeesgesbetween
-    	
     	// TODO - orientation point
     	connectionToTC();
     	getNearestDistanceOurStolenFlag();
+    	getStoleEnemyFlagPosition();
     	
     	sendMsgToStealers("MSG from: " + getName());    		
     	sendMsgToDefenders("MSG from: " + getName());    		
@@ -330,6 +334,17 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 //    	drawPath(nearest, Color.WHITE);
     }
     
+    private void getStoleEnemyFlagPosition()
+    {
+    	for (Map.Entry<Integer, TCRoleStealer> stealer : stealers.entrySet())
+    	{
+    		if (stealer.getValue().getEnemyFlagLocation() != null)
+    		{
+    			stolenEnemyFlagLocationRecv = stealer.getValue().getEnemyFlagLocation();
+    		}
+    	}
+    }
+    
     private void getNearestDistanceOurStolenFlag()
     {
     	double distance = Double.MAX_VALUE;
@@ -353,14 +368,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		}
     	}
     	
-    	for (Map.Entry<Integer, TCRoleDefender> stealers : defenders.entrySet())
+    	for (Map.Entry<Integer, TCRoleStealer> stealer : stealers.entrySet())
     	{
-    		if (stealers.getValue().getOurFlagLocation() != null)
+    		if (stealer.getValue().getOurFlagLocation() != null)
     		{
-    			double tmpDistance = fwMap.getDistance(navPoints.getNearestNavPoint(stealers.getValue().getOurFlagLocation()), ctf.getEnemyBase());
+    			double tmpDistance = fwMap.getDistance(navPoints.getNearestNavPoint(stealer.getValue().getOurFlagLocation()), ctf.getEnemyBase());
     			if (tmpDistance < distance)
     			{
-    				tmpLocation = stealers.getValue().getOurFlagLocation();
+    				tmpLocation = stealer.getValue().getOurFlagLocation();
     				distance = tmpDistance;
     			}
     		}
@@ -413,12 +428,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     			return true;
     		}
     	}
-    	
-//    	if (pickUpItemViaCategoryAndDistance(Category.ADRENALINE, distanceTreshold))
-//    	{
-//    		bot.getBotName().setInfo(" ... pick up adrenaline!");
-//    		return true;
-//    	}
     	
 		return false;
     }
@@ -538,6 +547,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	// communication values calibration
     	stealedEnemyFlagLocationSend = null;
+    	stolenOurFlagLocationSend = null;
     	
     	// STEALER *** COMBAT
     	if (combatStealer())
@@ -552,33 +562,92 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     			bot.getBotName().setInfo(RUN_FOR_FLAG);
     		}
     	}
-    	// STEALER *** HAVE FLAG, RUN HOME
-    	if (!ctf.isEnemyFlagHome() && ctf.isBotCarryingEnemyFlag())
+    	
+    	if (!ctf.isEnemyFlagHome())
     	{
-    		scoreIfIsItPossible();
-    	}
-    	// STEALER *** HAVE NOT FLAG, OTHER BOT HAS FLAG
-    	if (!ctf.isEnemyFlagHome() && !ctf.isBotCarryingEnemyFlag())
-    	{
-    		if (ctf.canOurTeamScore())
+    		// STEALER *** HAVE FLAG, RUN HOME
+    		if (ctf.isBotCarryingEnemyFlag())
+    		{
+    			scoreIfIsItPossible();
+    		}
+    		
+    		// STEALER *** HAVE NOT FLAG, OTHER BOT HAS FLAG
+    		if (!ctf.isBotCarryingEnemyFlag())
     		{
     			if (stolenEnemyFlagLocationRecv != null)
     			{
-    				bot.getBotName().setInfo(RUN_TO_TEAMMATE);
-    				targetNavPoint = stolenEnemyFlagLocationRecv;
+    				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
+					targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
     			}
     			else
     			{
-    				bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_TRUE);
-    				targetNavPoint = ctf.getOurBase().getLocation();
+    				if (!ctf.isOurFlagHome())
+    				{
+    					searchOurFlag();    						
+    				}
+    				else
+    				{
+    					if (ctf.getEnemyFlag().getLocation() != null)
+    					{
+    						bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
+    						targetNavPoint = ctf.getEnemyFlag().getLocation();
+    					}
+    					else
+    					{
+    						bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_FALSE);
+    						targetNavPoint = ctf.getOurBase().getLocation();    						    						
+    					}
+    				}
     			}
-    		}
-    		else
-    		{
-    			bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_FALSE);
-    			searchOurFlag();
+    			
+//    			if (ctf.getEnemyFlag().getLocation() != null)
+//        		{
+//    				// TODO
+//    				bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
+//        			targetNavPoint = ctf.getEnemyFlag().getLocation();
+//        		}
+//    			else
+//    			{
+//    				if (stolenEnemyFlagLocationRecv != null)
+//    				{
+//    					bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
+//    					targetNavPoint = stolenEnemyFlagLocationRecv;
+//    				}
+//    				else
+//    				{
+//    					if (!ctf.isOurFlagHome())
+//    					{
+//    						searchOurFlag();    						
+//    					}
+//    					else
+//    					{
+//    						bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_FALSE);
+//    						targetNavPoint = ctf.getOurBase().getLocation();    						    						
+//    					}
+//    				}
+//    			}
+    			
+//    			if (ctf.canOurTeamScore())
+//    			{
+//    				if (stolenEnemyFlagLocationRecv != null)
+//    				{
+//    					bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
+//    					targetNavPoint = stolenEnemyFlagLocationRecv;
+//    				}
+//    				else
+//    				{
+//    					bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_TRUE);
+//    					targetNavPoint = ctf.getOurBase().getLocation();
+//    				}
+//    			}
+//    			else
+//    			{
+//    				bot.getBotName().setInfo(WANT_KILL_ENEMY_STEALER_FALSE);
+//    				searchOurFlag();
+//    			}
     		}
     	}
+    	
     	
     	return false;
     }
@@ -602,13 +671,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private boolean scoreIfIsItPossible()
     {
     	returnHome();
-    	stealedEnemyFlagLocationSend = info.getNearestNavPoint().getLocation();
-    	
     	return true;
     }
     
     private boolean defenderBehaviour()
     {
+    	// communication values calibration
+    	stolenOurFlagLocationSend = null;
+    	
     	if (combatDefender())
 		{
 			bot.getBotName().setInfo(COMBAT);
@@ -635,8 +705,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (ctf.getOurFlag().getLocation() == null)
 		{
-			stolenOurFlagLocationSend = null;
-			
 			if (stolenOurFlagLocationRecv != null)
 			{
 				bot.getBotName().setInfo(ENEMY_STEALER_IS_VISIBLE);
@@ -788,7 +856,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (senses.isShot())
 		{
 			navigation.setFocus(navigation.getNearestNavPoint(info.getLocation()));
-			move.jump();
+//			move.jump();
 		}
     	
     	return false;
@@ -836,6 +904,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	
     	// Navigation to enemy base for FLAG
     	targetNavPoint = ctf.getEnemyBase();
+
     	return true;
     }
     
@@ -843,6 +912,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	bot.getBotName().setInfo(RUN_HOME_WITH_FLAG);
     	targetNavPoint = ctf.getOurBase().getLocation();
+    	stealedEnemyFlagLocationSend = info.getLocation();
         return true;
     }
     
@@ -956,6 +1026,47 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	
     	return tmp;
+    }
+    
+    private void removeEdgesAccordingMaps(String mapName)
+    {
+    	// TODO
+    	// Example: navBuilder.removeEdge("PathNode35", "JumpSpot1");
+    	
+    	if (MAP_NAME_BP2.equals(mapName))
+        {
+    		// ***** RED
+    		// middle
+    		navBuilder.removeEdge("AssaulPath12", "PathNode74");
+    		navBuilder.removeEdge("AssaulPath12", "PathNode81");
+    		// right
+    		navBuilder.removeEdge("JumpSpot2", "PathNode74");
+    		// left
+    		navBuilder.removeEdge("InventorySpot59", "PathNode81");
+//    		navBuilder.removeEdge("PathNode58", "JumpSpot1");
+    		
+    		// *** BLUE
+    		// middle
+    		navBuilder.removeEdge("AssaulPath5", "PathNode44");
+    		navBuilder.removeEdge("AssaulPath5", "PathNode0");
+    		// right
+    		navBuilder.removeEdge("InventorySpot55", "PathNode44");
+    		// left
+    		navBuilder.removeEdge("JumpSpot3", "PathNode0");
+        }
+    	if (MAP_NAME_CITADEL.equals(mapName))
+    	{
+    		// ***** RED
+    		navBuilder.removeEdge("PathNode26", "PathNode23");
+    		navBuilder.removeEdge("PathNode38", "PathNode23");
+    		
+//    		navBuilder.removeEdgesBetween("PathNode26", "PathNode23");
+//    		navBuilder.removeEdgesBetween("PathNode38", "PathNode23");
+    	}
+    	if (MAP_NAME_MAUL.equals(mapName))
+    	{
+    		
+    	}
     }
     
 //    private void drawPath(List<? extends ILocated> path, Color color) {
