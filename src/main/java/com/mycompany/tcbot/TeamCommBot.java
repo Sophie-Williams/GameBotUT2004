@@ -303,6 +303,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			ty items maj totiž interně taky tabooset
     	 */
     	
+//    	ctf.getEnemyFlag().isVisible()
+//    	Taboo - casovani itemu kdy je sebral - ostatnim preposlu UnrealId nebo ObjectId aby si tp pridali do sveho setu
+    	
     	// TODO - orientation point
     	connectionToTC();
     	getNearestDistanceOurStolenFlag();
