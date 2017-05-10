@@ -81,8 +81,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String RUN_HOME_WITH_FLAG = " ... run home with enemy flag!";
 	private static final String GUARDING = " ... guarding home base!";
 	private static final String GET_SHOT_CANT_SEE_ENEMY =  " ... get sho and can't see enemy!";
-	private static final String ENEMY_STEALER_IS_VISIBLE = " ... see stolen flag!";
-	private static final String ENEMY_STEALER_IS_NOT_VISIBLE = " ... some enemy stolen flag!";
 	private static final String PICKUP_HEALT = " ... pick up health!";
 	private static final String PICKUP_WEAPON = " ... pick up weapon!";
 	private static final String PICKUP_AMMO = " ... pick up ammo!";
@@ -96,9 +94,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	// NavPoints for CITADEL
 	private static final String MAP_NAME_CITADEL = "CTF-Citadel";
 	// p1, p2, tower
-	int [] defaultRedPositionCitadel = {11, 75, 14};
+	int [] defaultRedPositionCitadel = {107, 18, 14};
 	// p1, p2, tower
-	int [] defaultBluePositionCitadel = {30, 41, 36};
+	int [] defaultBluePositionCitadel = {108, 35, 36};
 	
 	// NavPoints for MAUL
 	private static final String MAP_NAME_MAUL = "CTF-Maul";
@@ -144,8 +142,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private boolean stealer = false;
 	private boolean usingCoverPath = false;
 	private boolean navigatingCoverPath = false;
+	private boolean recvdOurFlagPositionTrully = false;
 	
 	private Heatup pursuitEnemyHeatup = new Heatup(2000);
+	private Heatup pursuitFlagHeatup = new Heatup(2000);
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -414,18 +414,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			return true;
 		}
 
-//    	if (pickUpNearestWeapon(distanceTreshold, locationOfRadius))
-//    	{
-//    		bot.getBotName().setInfo(PICKUP_WEAPON);
-//    		return true;
-//    	}
-    	
-//    	if (pickUpNearestAmmo(distanceTreshold, locationOfRadius))
-//    	{
-//    		bot.getBotName().setInfo(PICKUP_AMMO);
-//    		return true;
-//    	}
-    	
     	if (pickUpItemViaCategoryAndDistance(Category.AMMO, distanceTreshold, locationOfRadius))
     	{
     		bot.getBotName().setInfo(PICKUP_AMMO);
@@ -438,22 +426,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		return true;
     	}
     	
-//    	if (info.getArmor() < 100)
-//    	{
-//    		if (pickUpItemViaCategoryAndDistance(Category.ARMOR, distanceTreshold, locationOfRadius))
-//    		{
-//    			bot.getBotName().setInfo(" ... pick up shield!");
-//    			return true;
-//    		}
-//    	}
-    	
 		return false;
     }
     
     private boolean pickUpItemViaUTypeAndDistance(UT2004ItemType type, int distanceTreshold, Location locationOfRadius)
     {
     	Item item = items.getNearestSpawnedItem(type);
-//    	Item item = items.getNearestVisibleItem(type);
     	
     	if (item != null
     			&& items.isPickable(item)
@@ -471,7 +449,26 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private boolean pickUpItemViaCategoryAndDistance(Category category, int distanceTreshold, Location locationOfRadius)
     {
     	Item item = items.getNearestSpawnedItem(category);
-//    	Item item = items.getNearestVisibleItem(category);
+    	
+    	if (!stealer)
+    	{
+    		if (item != null)
+    		{
+    			log.info(" *** I want " + category.toString() + " in distance " + fwMap.getDistance(navPoints.getNearestNavPoint(locationOfRadius), item.getNavPoint()));
+    			
+    			if (items.isPickable(item))
+    			{
+    				log.info("Item is piskable ...");
+    			}
+    			
+    			if (items.isPickupSpawned(item))
+    			{
+    				log.info("Item is pickup spawned ...");
+    			}
+    		}    		
+    	}
+    	
+    	
     	
 		if (item != null
 				&& items.isPickable(item)
@@ -484,77 +481,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		}
 		
 		return false;
-    }
-    
-    private boolean pickUpNearestAmmo(int distanceTreshold, Location locationOfRadius)
-    {
-    	Map<Double, Item> nearestAmmoForWeapon = new TreeMap<Double, Item>();
-    	
-    	for (Map.Entry<ItemType, Weapon> weapon : weaponry.getLoadedWeapons().entrySet())
-    	{
-    		Item itemPri = items.getNearestSpawnedItem(weapon.getValue().getDescriptor().getPriAmmoItemType());
-    		Item itemSec = items.getNearestSpawnedItem(weapon.getValue().getDescriptor().getSecAmmoItemType());
-    		
-    		if (itemPri != null)
-    		{
-    			double distancePri = fwMap.getDistance(info.getNearestNavPoint(), itemPri.getNavPoint());
-    			nearestAmmoForWeapon.put(distancePri, itemPri);    			
-    		}
-    		
-    		if (itemSec != null)
-    		{
-    			double distanceSec = fwMap.getDistance(info.getNearestNavPoint(), itemSec.getNavPoint());
-    			nearestAmmoForWeapon.put(distanceSec, itemSec);
-    		}
-    	}
-    	
-    	for (Map.Entry<Double, Item> ammo : nearestAmmoForWeapon.entrySet())
-    	{
-    		int ammoMax = weaponry.getMaxAmmo(ammo.getValue().getType());
-    		int ammoHas = weaponry.getAmmo(ammo.getValue().getType());
-    		
-    		if (ammoHas < ammoMax / 2)
-    		{
-    			if (distanceTreshold > fwMap.getDistance(ammo.getValue().getNavPoint(), navPoints.getNearestNavPoint(locationOfRadius)))
-    			{
-    				targetNavPoint = ammo.getValue().getLocation();
-    				return true;
-    			}
-    		}
-    	}
-    	
-    	return false;
-    }
-    
-    private boolean pickUpNearestWeapon(int distanceTreshold, Location locationOfRadius)
-    { 	
-    	Map<UnrealId, Item> weapons = items.getSpawnedItems(Category.WEAPON);
-    	double nearestDistance = Double.MAX_VALUE;
-    	
-    	for (Map.Entry<UnrealId, Item> weapon : weapons.entrySet())
-    	{
-    		if (!weaponry.hasWeapon(weapon.getValue().getType()))
-    		{
-    			double itemDistance = fwMap.getDistance(navPoints.getNearestNavPoint(locationOfRadius), weapon.getValue().getNavPoint());
-    			if (itemDistance < distanceTreshold)
-    			{
-    				if (itemDistance < nearestDistance)
-    				{
-    					nearestDistance = itemDistance;
-    					targetNavPoint = weapon.getValue().getLocation();
-    				}
-    			}
-    		}
-    	}
-    	
-    	if (nearestDistance != Double.MAX_VALUE)
-    	{
-    		return true;
-    	}
-    	else
-    	{
-    		return false;
-    	}
     }
     
     private void notMoveTurnAround()
@@ -661,6 +587,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		if (ctf.isOurFlagHome())
 		{
 			guardingOurBase();
+			recvdOurFlagPositionTrully = true;
 		}
 		else
 		{
@@ -677,10 +604,15 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (ctf.getOurFlag().isVisible())
     	{
+    		// info
     		bot.getBotName().setInfo(" ... run for our visible flag!");
+    		// calibration
     		stolenOurFlagLocationRecv = ctf.getOurFlag().getLocation();
     		stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
+    		// change target navigation point
     		targetNavPoint = ctf.getOurFlag().getLocation();
+    		// pursuit flag
+    		pursuitFlagHeatup.heat();
     	}
     	else if (ctf.getEnemyFlag().isVisible())
     	{
@@ -691,16 +623,30 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	else
     	{
-    		if (stolenOurFlagLocationRecv != null)
+    		if (stolenOurFlagLocationRecv != null && recvdOurFlagPositionTrully)
     		{
-    			bot.getBotName().setInfo(" ... run for our hidden flag!");
-    			targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+    			if (!info.atLocation(navPoints.getNearestNavPoint(stolenOurFlagLocationRecv), 30))
+    			{
+    				bot.getBotName().setInfo(" ... run for our hidden flag!");
+    				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+    			}
+    			else
+    			{
+    				log.info("Recvd position of our flag are old - run to enemy base!!!");
+    				recvdOurFlagPositionTrully = false;
+    			}
     		}
     		else
     		{
     			bot.getBotName().setInfo(" ... run to enemy base for our flag!");
     			targetNavPoint = ctf.getEnemyBase();
     		}
+    	}
+
+    	if (pursuitFlagHeatup.isHot())
+    	{
+    		log.info("Run heating for FLAG!");
+    		navigate(targetNavPoint);    		    		
     	}
     }
     
@@ -709,7 +655,22 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (!players.canSeeEnemies())
     	{
     		Location centerOfRadius = null;
-    		setRadiusForPickingUp(centerOfRadius);
+
+    		if (MAP_NAME_BP2.equals(game.getMapName()))
+    		{
+    			if (team == 0)
+    			{
+    				centerOfRadius = navPoints.getNavPoint("PathNode46").getLocation();    				
+    			}
+    			else
+    			{
+    				centerOfRadius = navPoints.getNavPoint("PathNode47").getLocation();    				
+    			}
+    		}
+    		else
+    		{
+    			centerOfRadius = ctf.getOurBase().getLocation();
+    		}
     		
     		if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_DEFENDER, centerOfRadius))
     		{
@@ -734,25 +695,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 
     	return true;
 		
-    }
-    
-    private void setRadiusForPickingUp(Location centerOfRadius)
-    {
-		if (MAP_NAME_BP2.equals(game.getMapName()))
-		{
-			if (team == 0)
-			{
-				centerOfRadius = navPoints.getNavPoint("PathNode46").getLocation();    				
-			}
-			else
-			{
-				centerOfRadius = navPoints.getNavPoint("PathNode47").getLocation();    				
-			}
-		}
-		else
-		{
-			centerOfRadius = ctf.getOurBase().getLocation();
-		}
     }
     
     private boolean isGetShotWithoutSeenEnemy()
@@ -859,6 +801,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
 		else
 		{
+			nearestEnemyBotLocationSend = null;
+			
 			if (pursuitEnemyHeatup.isHot())
 			{
 				navigation.setFocus(nearestEnemyBotLocationSend);
@@ -870,24 +814,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 				shoot.stopShooting();    			
 			}
 			
-			// BOT can't see enemies
-//			if (!stealer)
-//			{
-//				if (nearestEnemyBotLocationRecv != null)
-//				{
-//					pursuitEnemyHeatup.heat();
-//					targetNavPoint = nearestEnemyBotLocationRecv;
-//					
-//					if (pursuitEnemyHeatup.isHot())
-//					{
-//						if (nearestEnemyBotLocationRecv != null)
-//						{
-//							targetNavPoint = nearestEnemyBotLocationRecv;
-//						}
-//					}
-//				}
-//				
-//			}
+			if (!stealer && nearestEnemyBotLocationRecv != null)
+			{
+				navigation.setFocus(nearestEnemyBotLocationRecv);
+			}
+			else
+			{
+				navigation.setFocus(info.getNearestNavPoint());
+			}
 		}
     	
     	return false;
