@@ -122,6 +122,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	// MSGs data for DEFENDERS
 	private Location stolenOurFlagLocationSend = null;
 	private Location stolenOurFlagLocationRecv = null;
+	
+	// MSGs data for both
 	private Location nearestEnemyBotLocationSend = null;
 	private Location nearestEnemyBotLocationRecv = null;
 	
@@ -244,8 +246,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	{
     		defenders.put(hello.getID(), hello);
     	}
-    	
-    	nearestEnemyBotLocationRecv = hello.getNearestEnemyBotLocation();
 	}
     
     // =====
@@ -324,11 +324,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
+    		getNearestEnemyLocationForStealers();
     		stealerBehaviour();
     	}
     	// ********** CODE FOR DEFENDER
     	else
     	{
+    		getNearestEnemyLocationForDefenders();
     		defenderBehaviour();
     	}
  
@@ -391,6 +393,28 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (info.atLocation(stolenOurFlagLocationRecv, 5))
     	{
     		stolenOurFlagLocationRecv = null;    			
+    	}
+    }
+    
+    private void getNearestEnemyLocationForStealers()
+    {
+    	for (Map.Entry<Integer, TCRoleStealer> stealer : stealers.entrySet())
+    	{
+    		if (stealer.getValue().getNearestEnemyBotLocation() != null)
+    		{
+    			nearestEnemyBotLocationRecv = stealer.getValue().getNearestEnemyBotLocation();
+    		}
+    	}
+    }
+    
+    private void getNearestEnemyLocationForDefenders()
+    {
+    	for (Map.Entry<Integer, TCRoleDefender> defender : defenders.entrySet())
+    	{
+    		if (defender.getValue().getNearestEnemyBotLocation() != null)
+    		{
+    			nearestEnemyBotLocationRecv = defender.getValue().getNearestEnemyBotLocation();
+    		}
     	}
     }
     
@@ -782,7 +806,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (senses.isShot())
 		{
 			navigation.setFocus(navigation.getNearestNavPoint(info.getLocation()));
-//			move.jump();
 		}
     	
     	return false;
@@ -814,9 +837,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 				shoot.stopShooting();    			
 			}
 			
-			if (!stealer && nearestEnemyBotLocationRecv != null)
+			if (nearestEnemyBotLocationRecv != null)
 			{
-				navigation.setFocus(nearestEnemyBotLocationRecv);
+				navigation.setFocus(navPoints.getNearestNavPoint(nearestEnemyBotLocationRecv));
 			}
 			else
 			{
@@ -937,7 +960,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	String tmp = "";
     	if (teamBotsCount < 5)
     	{
-    		if (botNumber < 2)
+    		if (botNumber < 3)
     		{
     			stealer = false;
     			tmp = DEFENDER;
