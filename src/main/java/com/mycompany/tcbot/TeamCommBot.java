@@ -391,7 +391,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		}
     	}
 
-    	if (info.atLocation(stolenOurFlagLocationRecv, 5))
+    	if (info.atLocation(stolenOurFlagLocationRecv, 30))
     	{
     		stolenOurFlagLocationRecv = null;    			
     	}
@@ -537,53 +537,87 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	stolenEnemyFlagLocationSend = null;
     	getStolenEnemyFlagPosition();
     	
-    	if (ctf.getOurFlag().isVisible())
-		{
-			bot.getBotName().setInfo(" ... bot see our stolen FALG!");
-			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
-			targetNavPoint = ctf.getOurFlag().getLocation();
-			pursuitFlagHeatup.heat();
-			sendDataViaTC();
-		}
-		else if (ctf.getEnemyFlag().isVisible())
-		{
-			bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
-			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
-			targetNavPoint = ctf.getEnemyFlag().getLocation();
-			pursuitFlagHeatup.heat();
-			sendDataViaTC();
-		}
-		else
-		{
-			if (stolenEnemyFlagLocationRecv != null && recvdEnemyFlagPositionTrully)
-			{
-//				if (!ctf.isOurFlagHome())
-//				{
-//					searchOurFlag();
-//				}
-//				else
-//				{
-//				}
-				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
-				targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
-				pursuitFlagHeatup.heat();
-			}
-			else
-			{
-//				if (!ctf.isOurFlagHome())
-//				{
-//					searchOurFlag();    						
-//				}
-//				else
-//				{
-//				}
-				bot.getBotName().setInfo(" ... return to our base!");
-				targetNavPoint = ctf.getOurBase().getLocation();
-			}
-		}
+    	if (ctf.isOurFlagHome())
+    	{
+    		if (ctf.getEnemyFlag().isVisible())
+    		{
+    			bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
+    			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
+    			targetNavPoint = ctf.getEnemyFlag().getLocation();
+    			pursuitFlagHeatup.heat();
+    		}
+    		else
+    		{
+    			if (stolenEnemyFlagLocationRecv != null)
+    			{
+    				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
+    				targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
+    				pursuitFlagHeatup.heat();
+    			}
+    			else
+    			{
+    				bot.getBotName().setInfo(" ... return to our base!");
+    				targetNavPoint = ctf.getEnemyBase().getLocation();
+    			}
+    		}
+    	}
+    	else
+    	{
+    		if (ctf.getOurFlag().isVisible())
+    		{
+    			bot.getBotName().setInfo(" ... bot see our stolen FALG!");
+    			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
+    			targetNavPoint = ctf.getOurFlag().getLocation();
+    			pursuitFlagHeatup.heat();
+    		}
+    		else
+    		{
+    			if (stolenOurFlagLocationRecv != null)
+        		{
+    				bot.getBotName().setInfo(" ... run for our hidden flag!");
+    				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+    				pursuitFlagHeatup.heat();
+        		}
+        		else
+        		{
+        			bot.getBotName().setInfo(" ... run to enemy base for our flag!");
+        			targetNavPoint = ctf.getEnemyBase();
+        		}
+    		}
+    	}
+    	
+//    	if (ctf.getOurFlag().isVisible())
+//		{
+//			bot.getBotName().setInfo(" ... bot see our stolen FALG!");
+//			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
+//			targetNavPoint = ctf.getOurFlag().getLocation();
+//			pursuitFlagHeatup.heat();
+//		}
+//		else if (ctf.getEnemyFlag().isVisible())
+//		{
+//			bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
+//			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
+//			targetNavPoint = ctf.getEnemyFlag().getLocation();
+//			pursuitFlagHeatup.heat();
+//		}
+//		else
+//		{
+//			if (stolenEnemyFlagLocationRecv != null && recvdEnemyFlagPositionTrully)
+//			{
+//				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
+//				targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
+//				pursuitFlagHeatup.heat();
+//			}
+//			else
+//			{
+//				bot.getBotName().setInfo(" ... return to our base!");
+//				targetNavPoint = ctf.getOurBase().getLocation();
+//			}
+//		}
     	
     	if (pursuitFlagHeatup.isHot())
     	{
+    		sendDataViaTC();
     		log.info("Run heating for FLAG!");
     		navigate(targetNavPoint);    		    		
     	}
@@ -601,6 +635,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		{
 			bot.getBotName().setInfo(COMBAT);
 		}
+
+    	if (ctf.isBotCarryingEnemyFlag())
+    	{
+    		targetNavPoint = ctf.getOurBase();
+    		return;
+    	}
 		
 		if (ctf.isOurFlagHome())
 		{
@@ -610,11 +650,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		else
 		{
 			searchOurFlag();
-		}
-		
-		if (ctf.isBotCarryingEnemyFlag())
-		{
-			targetNavPoint = ctf.getOurBase();
 		}
     }
     
@@ -634,41 +669,74 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		targetNavPoint = ctf.getOurFlag().getLocation();
     		// pursuit flag
     		pursuitFlagHeatup.heat();
-    		sendDataViaTC();
-    	}
-    	else if (ctf.getEnemyFlag().isVisible())
-    	{
-    		bot.getBotName().setInfo(" ... run for enemy visible flag!");
-    		stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
-    		targetNavPoint = ctf.getEnemyFlag().getLocation();
-    		pursuitFlagHeatup.heat();
-    		sendDataViaTC();
     	}
     	else
     	{
-    		if (stolenOurFlagLocationRecv != null && recvdOurFlagPositionTrully)
+    		if (stolenOurFlagLocationRecv != null)
     		{
-    			if (!info.atLocation(navPoints.getNearestNavPoint(stolenOurFlagLocationRecv)))
-    			{
-    				bot.getBotName().setInfo(" ... run for our hidden flag!");
-    				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
-    				pursuitFlagHeatup.heat();
-    			}
-    			else
-    			{
-    				log.info("Recvd position of our flag are old - run to enemy base!!!");
-    				recvdOurFlagPositionTrully = false;
-    			}
+				bot.getBotName().setInfo(" ... run for our hidden flag!");
+				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
     		}
     		else
     		{
-    			bot.getBotName().setInfo(" ... run to enemy base for our flag!");
-    			targetNavPoint = ctf.getEnemyBase();
+    			if (ctf.getEnemyFlag().isVisible())
+    	    	{
+    	    		bot.getBotName().setInfo(" ... run for enemy visible flag!");
+    	    		stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
+    	    		targetNavPoint = ctf.getEnemyFlag().getLocation();
+    	    		pursuitFlagHeatup.heat();
+    	    	}
+    			else
+    			{
+    				bot.getBotName().setInfo(" ... run to enemy base for our flag!");
+        			targetNavPoint = ctf.getEnemyBase();
+    			}
     		}
     	}
+    	
+//    	if (ctf.getOurFlag().isVisible())
+//    	{
+//    		// info
+//    		bot.getBotName().setInfo(" ... run for our visible flag!");
+//    		// calibration
+//    		stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
+//    		// change target navigation point
+//    		targetNavPoint = ctf.getOurFlag().getLocation();
+//    		// pursuit flag
+//    		pursuitFlagHeatup.heat();
+//    	}
+//    	else if (ctf.getEnemyFlag().isVisible())
+//    	{
+//    		bot.getBotName().setInfo(" ... run for enemy visible flag!");
+//    		stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
+//    		targetNavPoint = ctf.getEnemyFlag().getLocation();
+//    		pursuitFlagHeatup.heat();
+//    	}
+//    	else
+//    	{
+//    		if (stolenOurFlagLocationRecv != null && recvdOurFlagPositionTrully)
+//    		{
+//    			if (!info.atLocation(navPoints.getNearestNavPoint(stolenOurFlagLocationRecv)))
+//    			{
+//    				bot.getBotName().setInfo(" ... run for our hidden flag!");
+//    				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+//    			}
+//    			else
+//    			{
+//    				log.info("Recvd position of our flag are old - run to enemy base!!!");
+//    				recvdOurFlagPositionTrully = false;
+//    			}
+//    		}
+//    		else
+//    		{
+//    			bot.getBotName().setInfo(" ... run to enemy base for our flag!");
+//    			targetNavPoint = ctf.getEnemyBase();
+//    		}
+//    	}
 
     	if (pursuitFlagHeatup.isHot())
     	{
+    		sendDataViaTC();
     		log.info("Run heating for FLAG!");
     		navigate(targetNavPoint);    		    		
     	}
@@ -844,7 +912,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			}
 			else
 			{
-				navigation.setFocus(info.getNearestNavPoint());
+				navigation.setFocus(null);
 			}
 		}
     	
@@ -906,6 +974,11 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	
     	// BOT isn't shooting
+    	if (senses.isShot())
+		{
+			navigation.setFocus(navigation.getNearestNavPoint(info.getLocation()));
+		}
+    	
     	return false;
     }
 
@@ -962,7 +1035,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	String tmp = "";
     	if (teamBotsCount < 5)
     	{
-    		if (botNumber < 2)
+    		if (botNumber < 3)
     		{
     			stealer = false;
     			tmp = DEFENDER;
