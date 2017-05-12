@@ -142,8 +142,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private boolean recvdOurFlagPositionTrully = false;
 	private boolean recvdEnemyFlagPositionTrully = false;
 	
-	private Heatup pursuitEnemyHeatup = new Heatup(2000);
-	private Heatup pursuitFlagHeatup = new Heatup(3000);
+	private Heatup pursuitEnemyHeatup = new Heatup(1000);
+	private Heatup pursuitFlagHeatup = new Heatup(2000);
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -307,11 +307,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// TODO - orientation point
     	connectionToTC();
     	
-    	getNearestDistanceOurStolenFlag();
+    	getStolenOurFlagPosition();
     	getStolenEnemyFlagPosition();
     	
-    	sendMsgToStealers("MSG from: " + getName());    		
-    	sendMsgToDefenders("MSG from: " + getName());    		
+    	sendDataViaTC();
     	
     	// communication values calibration
     	stolenEnemyFlagLocationSend = null;
@@ -340,6 +339,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	notMoveTurnAround();
     }
     
+    private void sendDataViaTC()
+    {
+    	sendMsgToStealers("MSG from: " + getName());    		
+    	sendMsgToDefenders("MSG from: " + getName());   
+    }
+    
     private void getStolenEnemyFlagPosition()
     {
     	if (ctf.isEnemyFlagHome())
@@ -362,7 +367,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     }
     
-    private void getNearestDistanceOurStolenFlag()
+    private void getStolenOurFlagPosition()
     {
     	if (ctf.isOurFlagHome())
     	{
@@ -422,15 +427,15 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		return true;
     	}
     	
+    	if (pickUpItemViaCategoryAndDistance(Category.WEAPON, distanceTreshold, locationOfRadius))
+    	{
+    		bot.getBotName().setInfo(PICKUP_WEAPON);
+    		return true;
+    	}
+    	
     	if (pickUpItemViaCategoryAndDistance(Category.HEALTH, distanceTreshold, locationOfRadius))
 		{
 			bot.getBotName().setInfo(PICKUP_HEALT);
-			return true;
-		}
-    	
-    	if (pickUpItemViaCategoryAndDistance(Category.WEAPON, distanceTreshold, locationOfRadius))
-		{
-			bot.getBotName().setInfo(PICKUP_WEAPON);
 			return true;
 		}
 
@@ -476,7 +481,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 				&& fwMap.getDistance(navPoints.getNearestNavPoint(locationOfRadius), item.getNavPoint())
 					< distanceTreshold)
 		{
-			log.info(bot.getBotName() + " want " + item.getType());
 			targetNavPoint = item.getLocation();
 			return true;
 		}
@@ -531,6 +535,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	stolenOurFlagLocationSend = null;
     	stolenEnemyFlagLocationSend = null;
+    	getStolenEnemyFlagPosition();
     	
     	if (ctf.getOurFlag().isVisible())
 		{
@@ -538,6 +543,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
 			targetNavPoint = ctf.getOurFlag().getLocation();
 			pursuitFlagHeatup.heat();
+			sendDataViaTC();
 		}
 		else if (ctf.getEnemyFlag().isVisible())
 		{
@@ -545,6 +551,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
 			targetNavPoint = ctf.getEnemyFlag().getLocation();
 			pursuitFlagHeatup.heat();
+			sendDataViaTC();
 		}
 		else
 		{
@@ -615,6 +622,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	stolenOurFlagLocationSend = null;
     	stolenEnemyFlagLocationSend = null;
+    	getStolenOurFlagPosition();
     	
     	if (ctf.getOurFlag().isVisible())
     	{
@@ -626,6 +634,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		targetNavPoint = ctf.getOurFlag().getLocation();
     		// pursuit flag
     		pursuitFlagHeatup.heat();
+    		sendDataViaTC();
     	}
     	else if (ctf.getEnemyFlag().isVisible())
     	{
@@ -633,6 +642,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
     		targetNavPoint = ctf.getEnemyFlag().getLocation();
     		pursuitFlagHeatup.heat();
+    		sendDataViaTC();
     	}
     	else
     	{
@@ -807,18 +817,21 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		if (players.canSeeEnemies())
     	{
 			nearestEnemyBotLocationSend = players.getNearestVisibleEnemy().getLocation();
-
+			
 			pursuitEnemyHeatup.heat();
 			navigation.setFocus(nearestEnemyBotLocationSend);
 			shoot.shoot(weaponPrefs, nearestEnemyBotLocationSend);
-    	}
-		else
-		{
+			
 			if (pursuitEnemyHeatup.isHot())
 			{
+				sendDataViaTC();
 				navigation.setFocus(nearestEnemyBotLocationSend);
 				shoot.shoot(weaponPrefs, nearestEnemyBotLocationSend);
 			}
+    	}
+		else
+		{
+			nearestEnemyBotLocationSend = null;
 			
 			if (info.isShooting())
 			{
@@ -873,6 +886,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	
     	targetNavPoint = ctf.getOurBase();
     	stolenEnemyFlagLocationSend = info.getLocation();
+    	sendDataViaTC();
     	
     	return true;
     }
@@ -1024,13 +1038,17 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		// ***** RED
     		navBuilder.removeEdge("PathNode67", "JumpSpot18");
     		navBuilder.removeEdge("PathNode66", "JumpSpot18");
-    		navBuilder.removeEdge("PathNode95", "JumpSpot3");
+    		navBuilder.removeEdge("PathNode95", "JumpSpot3");  // could not find 3
     		navBuilder.removeEdge("PathNode66", "JumpSpot2");
+    		navBuilder.removeEdge("PathNode96", "jumpspot9");  // could not find 9
+    		navBuilder.removeEdge("PathNode93", "JumpSpot0");
     		
     		// ***** BLUE
     		navBuilder.removeEdge("PathNode6", "JumpSpot20");
-    		navBuilder.removeEdge("PathNode48", "JumpSpot7");
-    		navBuilder.removeEdge("PathNode12", "JumpSpot6");
+    		navBuilder.removeEdge("PathNode48", "JumpSpot7");  // could not find 7
+    		navBuilder.removeEdge("PathNode12", "JumpSpot6"); // could not find 6
+    		navBuilder.removeEdge("PathNode143", "JumpSpot8"); // could not find 8
+    		navBuilder.removeEdge("PathNode6", "JumpSpot4");
     	}
     }
     
