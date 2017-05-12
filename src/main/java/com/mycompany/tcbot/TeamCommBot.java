@@ -20,6 +20,7 @@ import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType.Category;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.StopShooting;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.ConfigChange;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.GameInfo;
@@ -82,6 +83,9 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String RUN_BEHIND_FLAG_INVISIBLE = " ... run behind flag! (INVISIBLE)";
 	private static final String RUN_BEHIND_FLAG_VISIBLE = " ... run behind flag! (VISIBLE)";
 	
+	private static final int MAX_CYCLES_TO_AUTOKILL = 50;
+	private int tryingCounter = 0;
+	
 	// Default defenders locations
 	private int [] defaultPositions;
 	private NavPoint defenderPosition;
@@ -131,8 +135,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private static final int RANGE_MIDDLE = 500;
     private static final int RANGE_HIGH = 1000;
     private static final int RANGE_SUPERHIGH = 4000;
-    private static final int DISTANCE_PICK_UP_ITEM_FOR_STEALER = 800;
-    private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 4500;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_STEALER = 500;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 3000;
     
 	private static int number = 0;
 	private int botNumber;
@@ -142,8 +146,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private boolean recvdOurFlagPositionTrully = false;
 	private boolean recvdEnemyFlagPositionTrully = false;
 	
-	private Heatup pursuitEnemyHeatup = new Heatup(1000);
-	private Heatup pursuitFlagHeatup = new Heatup(2000);
+//	private Heatup pursuitEnemyHeatup = new Heatup(1000);
+//	private Heatup pursuitFlagHeatup = new Heatup(2000);
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -174,7 +178,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
         // false - secondary mode
         weaponPrefs.addGeneralPref(UT2004ItemType.LIGHTNING_GUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, true);
-        weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, true);
@@ -182,36 +185,34 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
         weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, true);
-        weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.ROCKET_LAUNCHER, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
         
         weaponPrefs.newPrefsRange(RANGE_LOW)
+        .add(UT2004ItemType.FLAK_CANNON, true)
         .add(UT2004ItemType.BIO_RIFLE, true)
         .add(UT2004ItemType.LINK_GUN, false)
-        .add(UT2004ItemType.ASSAULT_RIFLE, true)
-        .add(UT2004ItemType.SHIELD_GUN, false);
+        .add(UT2004ItemType.SHIELD_GUN, true)
+        .add(UT2004ItemType.ASSAULT_RIFLE, true);
 		// Only one weapon is added to this close combat range and it is SHIELD GUN		
 			
 		// Second range class is from 80 to 1000 ut units (its always from the previous class to the maximum
 		// distance of actual class
 		weaponPrefs.newPrefsRange(RANGE_MIDDLE)
-		.add(UT2004ItemType.SHOCK_RIFLE, false)
 		.add(UT2004ItemType.FLAK_CANNON, true)
-		.add(UT2004ItemType.BIO_RIFLE, true)
 		.add(UT2004ItemType.LINK_GUN, true)
         .add(UT2004ItemType.MINIGUN, false)
+        .add(UT2004ItemType.BIO_RIFLE, true)
         .add(UT2004ItemType.ASSAULT_RIFLE, true);
 		// More weapons are in this class with FLAK CANNON having the top priority		
 				
 		// Third range class is from 1000 to 4000 ut units - that's quite far actually
 		weaponPrefs.newPrefsRange(RANGE_HIGH)				
-		.add(UT2004ItemType.ROCKET_LAUNCHER, true)
+		.add(UT2004ItemType.SHOCK_RIFLE, true)
+		.add(UT2004ItemType.MINIGUN, false)
 		.add(UT2004ItemType.FLAK_CANNON, false)
-        .add(UT2004ItemType.SHOCK_RIFLE, true)
-        .add(UT2004ItemType.MINIGUN, false)
-		.add(UT2004ItemType.ASSAULT_RIFLE, false);        
+        .add(UT2004ItemType.ROCKET_LAUNCHER, true);
 		// Two weapons here with SHOCK RIFLE being the top
 				
 		// The last range class is from 4000 to 100000 ut units. In practise 100000 is
@@ -303,7 +304,23 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     
     @Override
     public void logic() throws PogamutException
-    {	    
+    {	   
+    	if (navigation.isTryingToGetBackToNav())
+    	{
+    		log.info("Trying to go back to navigation mesh " + getBotName());
+    		tryingCounter++;
+    		if (tryingCounter > MAX_CYCLES_TO_AUTOKILL)
+    		{
+    			log.info(getBotName() + " will be killed!");
+    			tryingCounter = 0;
+    			getBot().kill();    			
+    		}
+    	}
+    	else
+    	{
+    		tryingCounter = 0;
+    	}
+    	
     	// TODO - orientation point
     	connectionToTC();
     	
@@ -312,10 +329,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	
     	sendDataViaTC();
     	
-    	// communication values calibration
-    	stolenEnemyFlagLocationSend = null;
-    	stolenOurFlagLocationSend = null;
-
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
@@ -513,6 +526,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		{
     			bot.getBotName().setInfo(RUN_FOR_FLAG);
     		}
+    		recvdEnemyFlagPositionTrully = true;
     	}
     	
     	if (!ctf.isEnemyFlagHome())
@@ -544,15 +558,25 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     			bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
     			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
     			targetNavPoint = ctf.getEnemyFlag().getLocation();
-    			pursuitFlagHeatup.heat();
+    			sendDataViaTC();
+//    			pursuitFlagHeatup.heat();
     		}
     		else
     		{
-    			if (stolenEnemyFlagLocationRecv != null)
+    			if (stolenEnemyFlagLocationRecv != null && recvdEnemyFlagPositionTrully)
     			{
     				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
     				targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
-    				pursuitFlagHeatup.heat();
+    				
+    				if (info.atLocation(targetNavPoint, 30))
+                    {
+                        log.info("Old position of enemy flag!");
+                        recvdEnemyFlagPositionTrully = false;
+                    }
+                    else
+                    {
+                        log.info("Running on hidden our flag position!");
+                    }
     			}
     			else
     			{
@@ -568,7 +592,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     			bot.getBotName().setInfo(" ... bot see our stolen FALG!");
     			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
     			targetNavPoint = ctf.getOurFlag().getLocation();
-    			pursuitFlagHeatup.heat();
+    			sendDataViaTC();
+//    			pursuitFlagHeatup.heat();
     		}
     		else
     		{
@@ -576,7 +601,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
         		{
     				bot.getBotName().setInfo(" ... run for our hidden flag!");
     				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
-    				pursuitFlagHeatup.heat();
+
+                    if (info.atLocation(targetNavPoint, 30))
+                    {
+                        log.info("Old position of our flag!");
+                        recvdOurFlagPositionTrully = false;
+                    }
+                    else
+                    {
+                        log.info("Running on hidden our flag position!");
+                    }
         		}
         		else
         		{
@@ -585,42 +619,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
         		}
     		}
     	}
-    	
-//    	if (ctf.getOurFlag().isVisible())
-//		{
-//			bot.getBotName().setInfo(" ... bot see our stolen FALG!");
-//			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
-//			targetNavPoint = ctf.getOurFlag().getLocation();
-//			pursuitFlagHeatup.heat();
-//		}
-//		else if (ctf.getEnemyFlag().isVisible())
-//		{
-//			bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
-//			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
-//			targetNavPoint = ctf.getEnemyFlag().getLocation();
-//			pursuitFlagHeatup.heat();
-//		}
-//		else
-//		{
-//			if (stolenEnemyFlagLocationRecv != null && recvdEnemyFlagPositionTrully)
-//			{
-//				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
-//				targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
-//				pursuitFlagHeatup.heat();
-//			}
-//			else
-//			{
-//				bot.getBotName().setInfo(" ... return to our base!");
-//				targetNavPoint = ctf.getOurBase().getLocation();
-//			}
-//		}
-    	
-    	if (pursuitFlagHeatup.isHot())
-    	{
-    		sendDataViaTC();
-    		log.info("Run heating for FLAG!");
-    		navigate(targetNavPoint);    		    		
-    	}
+
+//    	if (pursuitFlagHeatup.isHot())
+//    	{
+//    		sendDataViaTC();
+//    		log.info("Run heating for FLAG!");
+//    		navigate(targetNavPoint);    		    		
+//    	}
     }
     
     private boolean behaviourWithEnemyFlag()
@@ -668,14 +673,25 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		// change target navigation point
     		targetNavPoint = ctf.getOurFlag().getLocation();
     		// pursuit flag
-    		pursuitFlagHeatup.heat();
+//    		pursuitFlagHeatup.heat();
+    		sendDataViaTC();
     	}
     	else
     	{
-    		if (stolenOurFlagLocationRecv != null)
+    		if (stolenOurFlagLocationRecv != null && recvdOurFlagPositionTrully)
     		{
-				bot.getBotName().setInfo(" ... run for our hidden flag!");
-				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+    			bot.getBotName().setInfo(" ... run for our hidden flag!");
+    			targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+
+    			if (info.atLocation(targetNavPoint, 30) && !navigation.isNavigating())
+    			{
+    				log.info("Old position of our flag!");
+    				recvdOurFlagPositionTrully = false;
+    			}
+    			else
+    			{
+    				log.info("Running on hidden our flag position!");
+    			}
     		}
     		else
     		{
@@ -684,7 +700,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	    		bot.getBotName().setInfo(" ... run for enemy visible flag!");
     	    		stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
     	    		targetNavPoint = ctf.getEnemyFlag().getLocation();
-    	    		pursuitFlagHeatup.heat();
+//    	    		pursuitFlagHeatup.heat();
+    	    		sendDataViaTC();
     	    	}
     			else
     			{
@@ -734,12 +751,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 //    		}
 //    	}
 
-    	if (pursuitFlagHeatup.isHot())
-    	{
-    		sendDataViaTC();
-    		log.info("Run heating for FLAG!");
-    		navigate(targetNavPoint);    		    		
-    	}
+//    	if (pursuitFlagHeatup.isHot())
+//    	{
+//    		sendDataViaTC();
+//    		log.info("Run heating for FLAG!");
+//    		navigate(targetNavPoint);    		    		
+//    	}
     }
     
     private boolean guardingOurBase()
@@ -769,11 +786,11 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     			return false;
     		}   
     		
-    		if (isGetShotWithoutSeenEnemy())
-    		{
-    			bot.getBotName().setInfo(GET_SHOT_CANT_SEE_ENEMY);
-    			return false;
-    		}
+//    		if (isGetShotWithoutSeenEnemy())
+//    		{
+//    			bot.getBotName().setInfo(GET_SHOT_CANT_SEE_ENEMY);
+//    			return false;
+//    		}
     		
     		// Go on defenders positions
     		bot.getBotName().setInfo(GUARDING + " FROM DEF_POSITION");
@@ -782,7 +799,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	else
     	{
     		bot.getBotName().setInfo(GUARDING + " FROM BASE");
-    		targetNavPoint = ctf.getOurFlag().getLocation();    		
+    		targetNavPoint = ctf.getOurBase().getLocation();    		
     	}
 
     	return true;
@@ -885,17 +902,10 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		if (players.canSeeEnemies())
     	{
 			nearestEnemyBotLocationSend = players.getNearestVisibleEnemy().getLocation();
-			
-			pursuitEnemyHeatup.heat();
+//			pursuitEnemyHeatup.heat();
 			navigation.setFocus(nearestEnemyBotLocationSend);
 			shoot.shoot(weaponPrefs, nearestEnemyBotLocationSend);
-			
-			if (pursuitEnemyHeatup.isHot())
-			{
-				sendDataViaTC();
-				navigation.setFocus(nearestEnemyBotLocationSend);
-				shoot.shoot(weaponPrefs, nearestEnemyBotLocationSend);
-			}
+			sendDataViaTC();
     	}
 		else
 		{
@@ -916,6 +926,11 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			}
 		}
     	
+//		if (pursuitEnemyHeatup.isHot())
+//		{
+//			sendDataViaTC();				
+//		}
+		
     	return false;
 	}
 
@@ -974,7 +989,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	
     	// BOT isn't shooting
-    	if (senses.isShot())
+    	if (!info.isShooting() && senses.isShot())
 		{
 			navigation.setFocus(navigation.getNearestNavPoint(info.getLocation()));
 		}
@@ -1048,7 +1063,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	else if (teamBotsCount < 7)
     	{
-    		if (botNumber < 3)
+    		if (botNumber < 4)
     		{
     			stealer = false;
     			tmp = DEFENDER;
@@ -1061,7 +1076,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	}
     	else
     	{
-    		if (botNumber < 4)
+    		if (botNumber < 5)
     		{
     			stealer = false;
     			tmp = DEFENDER;
@@ -1105,6 +1120,14 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		// ***** RED
     		navBuilder.removeEdge("PathNode26", "PathNode23");
     		navBuilder.removeEdge("PathNode38", "PathNode23");
+    		// jump to flag
+    		navBuilder.removeEdge("PathNode92", "JumpSpot12");
+    		navBuilder.removeEdge("PathNode100", "JumpSpot12");
+
+    		// ***** BLUE
+    		// jump to flag
+    		navBuilder.removeEdge("PathNode101", "JumpSpot8");
+    		navBuilder.removeEdge("PathNode102", "JumpSpot8");
     	}
     	if (MAP_NAME_MAUL.equals(mapName))
     	{
