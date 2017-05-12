@@ -1,9 +1,8 @@
 package com.mycompany.tcbot;
 
 import java.util.Collection;
-import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.logging.Level;
 
@@ -13,11 +12,12 @@ import cz.cuni.amis.pogamut.base.agent.navigation.IPathFuture;
 import cz.cuni.amis.pogamut.base.agent.navigation.impl.PrecomputedPathFuture;
 import cz.cuni.amis.pogamut.base.communication.worldview.listener.annotation.EventListener;
 import cz.cuni.amis.pogamut.base.utils.guice.AgentScoped;
-import cz.cuni.amis.pogamut.base.utils.math.DistanceUtils;
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.agent.navigation.floydwarshall.FloydWarshallMap;
 import cz.cuni.amis.pogamut.ut2004.bot.impl.UT2004Bot;
+import cz.cuni.amis.pogamut.ut2004.communication.messages.ItemType.Category;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.UT2004ItemType;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbcommands.Initialize;
 import cz.cuni.amis.pogamut.ut2004.communication.messages.gbinfomessages.BotKilled;
@@ -75,10 +75,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	private static final String RUN_FOR_FLAG = " ... run for flag!";
 	private static final String RUN_HOME_WITH_FLAG = " ... run home with enemy flag!";
 	private static final String GUARDING = " ... guarding home base!";
-	private static final String PICKUP_WEAPONS = " ... pick-up weapons!";
 	private static final String GET_SHOT_CANT_SEE_ENEMY =  " ... get sho and can't see enemy!";
-	private static final String ENEMY_STEALERS_SEE = " ... see stolen flag!";
-	private static final String ENEMY_STEALERS_CANNOT_SEE = " ... some enemy stolen flag!";
+	private static final String PICKUP_HEALT = " ... pick up health!";
+	private static final String PICKUP_WEAPON = " ... pick up weapon!";
+	private static final String PICKUP_AMMO = " ... pick up ammo!";
+	private static final String RUN_BEHIND_FLAG_INVISIBLE = " ... run behind flag! (INVISIBLE)";
+	private static final String RUN_BEHIND_FLAG_VISIBLE = " ... run behind flag! (VISIBLE)";
 	
 	// Default defenders locations
 	private int [] defaultPositions;
@@ -87,16 +89,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 	// NavPoints for CITADEL
 	private static final String MAP_NAME_CITADEL = "CTF-Citadel";
 	// p1, p2, tower
-	int [] defaultRedPositionCitadel = {11, 75, 14};
+	int [] defaultRedPositionCitadel = {107, 18, 14};
 	// p1, p2, tower
-	int [] defaultBluePositionCitadel = {30, 41, 36};
+	int [] defaultBluePositionCitadel = {108, 35, 36};
 	
 	// NavPoints for MAUL
 	private static final String MAP_NAME_MAUL = "CTF-Maul";
 	// p1, p2, tower
-	int [] defaultRedPositionMaul = {101, 117, 46};
+	int [] defaultRedPositionMaul = {99, 116, 46};
 	// p1, p2, tower
-	int [] defaultBluePositionMaul = {17, 138, 54};
+	int [] defaultBluePositionMaul = {17, 139, 54};
 	
 	// NavPoints for BP2-CONCENTRATE
 	private static final String MAP_NAME_BP2 = "CTF-BP2-Concentrate";
@@ -109,12 +111,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private ILocated targetNavPoint = null;
     
 	// MSGs data for STEALERS
-	private ILocated stealedEnemyFlagLocationSend = null;
-	private ILocated stealedEnemyFlagLocationRecv = null;
+	private Location stolenEnemyFlagLocationSend = null;
+	private Location stolenEnemyFlagLocationRecv = null;
 	
 	// MSGs data for DEFENDERS
-	private ILocated stealedOurFlagLocationSend = null;
-	private ILocated stealedOurFlagLocationRecv = null;
+	private Location stolenOurFlagLocationSend = null;
+	private Location stolenOurFlagLocationRecv = null;
+	
+	// MSGs data for both
+	private Location nearestEnemyBotLocationSend = null;
+	private Location nearestEnemyBotLocationRecv = null;
 	
 	// TMP msg for showing communication between Bots
 	private TreeMap<Integer, TCRoleDefender> defenders;
@@ -125,22 +131,19 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private static final int RANGE_MIDDLE = 500;
     private static final int RANGE_HIGH = 1000;
     private static final int RANGE_SUPERHIGH = 4000;
-    private static final int DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER = 600;
-	
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_STEALER = 800;
+    private static final int DISTANCE_PICK_UP_ITEM_FOR_DEFENDER = 4500;
+    
 	private static int number = 0;
 	private int botNumber;
 	private boolean stealer = false;
-	
-	private boolean useCoverPath = false;
 	private boolean usingCoverPath = false;
+	private boolean navigatingCoverPath = false;
+	private boolean recvdOurFlagPositionTrully = false;
+	private boolean recvdEnemyFlagPositionTrully = false;
 	
-	private ILocated ourFlagLocationOrigin;
-	private ILocated enemyFlagLocationOrigin;
-	
-	private int mainStealer;
-	private int mainDefender;
-	
-	Heatup pursueEnemy = new Heatup(3000);
+	private Heatup pursuitEnemyHeatup = new Heatup(1000);
+	private Heatup pursuitFlagHeatup = new Heatup(2000);
 	
     @Override
     public Initialize getInitializeCommand() {
@@ -155,6 +158,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     }
 
     @Override
+    public void mapInfoObtained()
+    {
+    	// Remove some edges
+        removeEdgesAccordingMaps(game.getMapName());
+    }
+    
+    @Override
     public void botInitialized(GameInfo gameInfo, ConfigChange config, InitedMessage init) {
     	bot.getLogger().getCategory("Yylex").setLevel(Level.OFF);
         tcClient.getLog().setLevel(Level.ALL);    	
@@ -164,38 +174,51 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
         // false - secondary mode
         weaponPrefs.addGeneralPref(UT2004ItemType.LIGHTNING_GUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.SHOCK_RIFLE, false);
+        weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.MINIGUN, false);
+        weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.LINK_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.FLAK_CANNON, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, true);
+        weaponPrefs.addGeneralPref(UT2004ItemType.ASSAULT_RIFLE, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.ROCKET_LAUNCHER, true);
         weaponPrefs.addGeneralPref(UT2004ItemType.SHIELD_GUN, false);
         weaponPrefs.addGeneralPref(UT2004ItemType.BIO_RIFLE, true);
         
         weaponPrefs.newPrefsRange(RANGE_LOW)
-        .add(UT2004ItemType.SHIELD_GUN, true);
+        .add(UT2004ItemType.BIO_RIFLE, true)
+        .add(UT2004ItemType.LINK_GUN, false)
+        .add(UT2004ItemType.ASSAULT_RIFLE, true)
+        .add(UT2004ItemType.SHIELD_GUN, false);
 		// Only one weapon is added to this close combat range and it is SHIELD GUN		
 			
 		// Second range class is from 80 to 1000 ut units (its always from the previous class to the maximum
 		// distance of actual class
 		weaponPrefs.newPrefsRange(RANGE_MIDDLE)
-		        .add(UT2004ItemType.FLAK_CANNON, true)
-		        .add(UT2004ItemType.MINIGUN, true)
-		        .add(UT2004ItemType.LINK_GUN, false)
-		        .add(UT2004ItemType.ASSAULT_RIFLE, true);        
+		.add(UT2004ItemType.SHOCK_RIFLE, false)
+		.add(UT2004ItemType.FLAK_CANNON, true)
+		.add(UT2004ItemType.BIO_RIFLE, true)
+		.add(UT2004ItemType.LINK_GUN, true)
+        .add(UT2004ItemType.MINIGUN, false)
+        .add(UT2004ItemType.ASSAULT_RIFLE, true);
 		// More weapons are in this class with FLAK CANNON having the top priority		
 				
 		// Third range class is from 1000 to 4000 ut units - that's quite far actually
-		weaponPrefs.newPrefsRange(RANGE_HIGH)
-		        .add(UT2004ItemType.SHOCK_RIFLE, true)
-		        .add(UT2004ItemType.MINIGUN, false);
+		weaponPrefs.newPrefsRange(RANGE_HIGH)				
+		.add(UT2004ItemType.ROCKET_LAUNCHER, true)
+		.add(UT2004ItemType.FLAK_CANNON, false)
+        .add(UT2004ItemType.SHOCK_RIFLE, true)
+        .add(UT2004ItemType.MINIGUN, false)
+		.add(UT2004ItemType.ASSAULT_RIFLE, false);        
 		// Two weapons here with SHOCK RIFLE being the top
 				
 		// The last range class is from 4000 to 100000 ut units. In practise 100000 is
 		// the same as infinity as there is no map in UT that big
 		weaponPrefs.newPrefsRange(RANGE_SUPERHIGH)
-		        .add(UT2004ItemType.LIGHTNING_GUN, true)
-		        .add(UT2004ItemType.SHOCK_RIFLE, true);  	  
+        .add(UT2004ItemType.LIGHTNING_GUN, true)
+        .add(UT2004ItemType.SHOCK_RIFLE, true);  	  
 		// Only two weapons here, both good at sniping
     }
     
@@ -210,11 +233,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	{
     		stealers.put(hello.getID(), hello);
     	}
-    	
-    	if (hello.getEnemyFlagLocation() != null)
-    	{
-    		stealedEnemyFlagLocationRecv = hello.getEnemyFlagLocation();
-    	}
 	}
     
     @EventListener(eventClass=TCRoleDefender.class)
@@ -223,11 +241,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (defenders != null)
     	{
     		defenders.put(hello.getID(), hello);
-    	}
-    	
-    	if (hello.getOurFlagLocation() != null)
-    	{
-    		stealedOurFlagLocationRecv = hello.getOurFlagLocation();
     	}
 	}
     
@@ -286,9 +299,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	{
     		defenderPosition = navPoints.getNavPoint(PATHNODE + defaultPositions[botNumber - 1]);
     	}
-    	
-    	ourFlagLocationOrigin = ctf.getOurFlag().getLocation();
-    	enemyFlagLocationOrigin = ctf.getEnemyFlag().getLocation();
     }
     
     @Override
@@ -297,65 +307,205 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// TODO - orientation point
     	connectionToTC();
     	
+    	getStolenOurFlagPosition();
+    	getStolenEnemyFlagPosition();
+    	
+    	sendDataViaTC();
+    	
+    	// communication values calibration
+    	stolenEnemyFlagLocationSend = null;
+    	stolenOurFlagLocationSend = null;
+
     	// ********** CODE FOR STEALER
     	if (stealer)
     	{
-    		sendMsgToStealers("MSG from: " + getName());    		
-    		mainStealer = stealers.size() > 0 ? stealers.firstKey() : -1;
-
-    		if (stealerBehaviour())
-    		{
-    			return;
-    		}
-    		
-    		// target navigation point controller
-        	stealerMovingController();
+    		getNearestEnemyLocationForStealers();
+    		stealerBehaviour();
     	}
     	// ********** CODE FOR DEFENDER
     	else
     	{
-    		sendMsgToDefenders("MSG from: " + getName());    		
-    		mainDefender = defenders.size() > 0 ? defenders.firstKey() : -1;
-    		
-    		if (defenderBehaviour())
-    		{
-    			return;
-    		}
-    		
-    		// target navigation point controller
-    		defenderMovingController();
+    		getNearestEnemyLocationForDefenders();
+    		defenderBehaviour();
     	}
  
     	// ********** CODE FOR NAVIGATION
-    	navigate(targetNavPoint);
-    	notMoveturnAround();
-    	
-    	
-    	// TODO - nastavit sber zbrani podle vzdalenosti pro defendera - momentalne to bere moc casu
-    	// TODO - pridat sber munice kdyz nemas (jinak nestrili)
-    	// TODO - pouzivat heatup a cooldown = prodlouzeni akce
-    	// TODO - zkusit vzdy bezet naplno
-    	// TODO - zkusit prenastavit coverpath
+    	if (usingCoverPath && navigation.isNavigating())
+    	{
+    		return;
+    	}
+
+    	navigate(targetNavPoint);    		
+    	notMoveTurnAround();
     }
     
-    private void notMoveturnAround()
+    private void sendDataViaTC()
     {
-    	if (!navigation.isNavigating())
+    	sendMsgToStealers("MSG from: " + getName());    		
+    	sendMsgToDefenders("MSG from: " + getName());   
+    }
+    
+    private void getStolenEnemyFlagPosition()
+    {
+    	if (ctf.isEnemyFlagHome())
+    	{
+    		stolenEnemyFlagLocationRecv = null;
+    		return;
+    	}
+    	
+    	for (Map.Entry<Integer, TCRoleStealer> stealer : stealers.entrySet())
+    	{
+    		if (stealer.getValue().getEnemyFlagLocation() != null)
+    		{
+    			stolenEnemyFlagLocationRecv = stealer.getValue().getEnemyFlagLocation();
+    		}
+    	}
+    	
+    	if (info.atLocation(stolenEnemyFlagLocationRecv, 30))
+    	{
+    		stolenEnemyFlagLocationRecv = null;
+    	}
+    }
+    
+    private void getStolenOurFlagPosition()
+    {
+    	if (ctf.isOurFlagHome())
+    	{
+    		stolenOurFlagLocationRecv = null;
+    		return;
+    	}
+    	
+    	for (Map.Entry<Integer, TCRoleStealer> stealer : stealers.entrySet())
+    	{
+    		if (stealer.getValue().getOurFlagLocation() != null)
+    		{
+    			stolenOurFlagLocationRecv = stealer.getValue().getOurFlagLocation();
+    		}
+    	}
+    	
+    	for (Map.Entry<Integer, TCRoleDefender> defender : defenders.entrySet())
+    	{
+    		if (defender.getValue().getOurFlagLocation() != null)
+    		{
+    			stolenOurFlagLocationRecv = defender.getValue().getOurFlagLocation();
+    		}
+    	}
+
+    	if (info.atLocation(stolenOurFlagLocationRecv, 5))
+    	{
+    		stolenOurFlagLocationRecv = null;    			
+    	}
+    }
+    
+    private void getNearestEnemyLocationForStealers()
+    {
+    	for (Map.Entry<Integer, TCRoleStealer> stealer : stealers.entrySet())
+    	{
+    		if (stealer.getValue().getNearestEnemyBotLocation() != null)
+    		{
+    			nearestEnemyBotLocationRecv = stealer.getValue().getNearestEnemyBotLocation();
+    		}
+    	}
+    }
+    
+    private void getNearestEnemyLocationForDefenders()
+    {
+    	for (Map.Entry<Integer, TCRoleDefender> defender : defenders.entrySet())
+    	{
+    		if (defender.getValue().getNearestEnemyBotLocation() != null)
+    		{
+    			nearestEnemyBotLocationRecv = defender.getValue().getNearestEnemyBotLocation();
+    		}
+    	}
+    }
+    
+    private boolean pickUpItemsViaDistanceTypeAndCategory(int distanceTreshold, Location locationOfRadius)
+    {
+    	if (pickUpItemViaUTypeAndDistance(UT2004ItemType.U_DAMAGE_PACK, distanceTreshold, locationOfRadius))
+    	{
+    		bot.getBotName().setInfo(" ... pick up double damage!");
+    		return true;
+    	}
+    	
+    	if (pickUpItemViaCategoryAndDistance(Category.WEAPON, distanceTreshold, locationOfRadius))
+    	{
+    		bot.getBotName().setInfo(PICKUP_WEAPON);
+    		return true;
+    	}
+    	
+    	if (pickUpItemViaCategoryAndDistance(Category.HEALTH, distanceTreshold, locationOfRadius))
+		{
+			bot.getBotName().setInfo(PICKUP_HEALT);
+			return true;
+		}
+
+    	if (pickUpItemViaCategoryAndDistance(Category.AMMO, distanceTreshold, locationOfRadius))
+    	{
+    		bot.getBotName().setInfo(PICKUP_AMMO);
+    		return true;
+    	}
+    	
+    	if (pickUpItemViaCategoryAndDistance(Category.ARMOR, distanceTreshold, locationOfRadius))
+    	{
+    		bot.getBotName().setInfo(" ... pick up shield!");
+    		return true;
+    	}
+    	
+		return false;
+    }
+    
+    private boolean pickUpItemViaUTypeAndDistance(UT2004ItemType type, int distanceTreshold, Location locationOfRadius)
+    {
+    	Item item = items.getNearestSpawnedItem(type);
+    	
+    	if (item != null
+    			&& items.isPickable(item)
+    			&& items.isPickupSpawned(item)
+    			&& fwMap.getDistance(navPoints.getNearestNavPoint(locationOfRadius), item.getNavPoint())
+				< distanceTreshold)
+    	{
+    		targetNavPoint = item.getLocation();
+    		return true;
+    	}
+    	
+    	return false;
+    }
+    
+    private boolean pickUpItemViaCategoryAndDistance(Category category, int distanceTreshold, Location locationOfRadius)
+    {
+    	Item item = items.getNearestSpawnedItem(category);
+    	
+		if (item != null
+				&& items.isPickable(item)
+    			&& items.isPickupSpawned(item)
+				&& fwMap.getDistance(navPoints.getNearestNavPoint(locationOfRadius), item.getNavPoint())
+					< distanceTreshold)
+		{
+			targetNavPoint = item.getLocation();
+			return true;
+		}
+		
+		return false;
+    }
+    
+    private void notMoveTurnAround()
+    {
+    	if (!navigation.isNavigating()
+    			&& !players.canSeeEnemies()
+    			&& !info.isShooting())
     	{
     		move.turnHorizontal(90);
     	}
     }
     
-    private boolean stealerBehaviour()
+    private void stealerBehaviour()
     {
-    	// communication values calibration
-    	stealedEnemyFlagLocationSend = null;
-    	
     	// STEALER *** COMBAT
     	if (combatStealer())
     	{
     		bot.getBotName().setInfo(COMBAT);
     	}
+    	
 		// STEALER *** RUN FOR FLAG
     	if (ctf.isEnemyFlagHome())
     	{
@@ -363,65 +513,89 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     		{
     			bot.getBotName().setInfo(RUN_FOR_FLAG);
     		}
-    		else
-    		{
-    			bot.getBotName().setInfo(PICKUP_WEAPONS);
-    		}
-    	}
-    	// STEALER *** HAVE FLAG, RUN HOME
-    	if (!ctf.isEnemyFlagHome() && ctf.isBotCarryingEnemyFlag())
-    	{
-    		scoreIfIsItPossible();
-    	}
-    	// STEALER *** HAVE NOT FLAG, OTHER BOT HAS FLAG
-    	if (!ctf.isEnemyFlagHome() && !ctf.isBotCarryingEnemyFlag())
-    	{
-    		if (ctf.canOurTeamScore())
-    		{
-    			if (stealedEnemyFlagLocationRecv != null)
-    			{
-    				targetNavPoint = stealedEnemyFlagLocationRecv;
-    			}    			
-    		}
     	}
     	
-    	return false;
-    }
-    
-    
-    private void stealerMovingController()
-    {
-    	if (targetNavPoint == null)
+    	if (!ctf.isEnemyFlagHome())
     	{
-    		if(ctf.isEnemyFlagHome())
-    		{
-    			targetNavPoint = ctf.getEnemyFlag().getLocation();
-    		}
+    		// STEALER *** HAVE ENEMY FLAG, RUN HOME
     		if (ctf.isBotCarryingEnemyFlag())
     		{
-    			targetNavPoint = ctf.getOurFlag().getLocation();
+    			behaviourWithEnemyFlag();
+    		}
+    		
+    		// STEALER *** HAVE NOT FLAG, OTHER BOT HAS ENEMY FLAG
+    		if (!ctf.isBotCarryingEnemyFlag())
+    		{
+    			behaviourWithoutEnemyFlag();
     		}
     	}
     }
     
-    private boolean scoreIfIsItPossible()
+    private void behaviourWithoutEnemyFlag()
     {
-    	returnHome();
-//    	if (ctf.canBotScore())
-//		{
-//			returnHome();
-//			useCoverPath = false;
-//		}
-//		else
-//		{
-//			useCoverPath = true;
-//		}
+    	stolenOurFlagLocationSend = null;
+    	stolenEnemyFlagLocationSend = null;
+    	getStolenEnemyFlagPosition();
     	
-    	stealedEnemyFlagLocationSend = info.getNearestNavPoint().getLocation();
-    	return useCoverPath;
+    	if (ctf.getOurFlag().isVisible())
+		{
+			bot.getBotName().setInfo(" ... bot see our stolen FALG!");
+			stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
+			targetNavPoint = ctf.getOurFlag().getLocation();
+			pursuitFlagHeatup.heat();
+			sendDataViaTC();
+		}
+		else if (ctf.getEnemyFlag().isVisible())
+		{
+			bot.getBotName().setInfo(RUN_BEHIND_FLAG_VISIBLE);
+			stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
+			targetNavPoint = ctf.getEnemyFlag().getLocation();
+			pursuitFlagHeatup.heat();
+			sendDataViaTC();
+		}
+		else
+		{
+			if (stolenEnemyFlagLocationRecv != null && recvdEnemyFlagPositionTrully)
+			{
+//				if (!ctf.isOurFlagHome())
+//				{
+//					searchOurFlag();
+//				}
+//				else
+//				{
+//				}
+				bot.getBotName().setInfo(RUN_BEHIND_FLAG_INVISIBLE);
+				targetNavPoint = navPoints.getNearestNavPoint(stolenEnemyFlagLocationRecv);
+				pursuitFlagHeatup.heat();
+			}
+			else
+			{
+//				if (!ctf.isOurFlagHome())
+//				{
+//					searchOurFlag();    						
+//				}
+//				else
+//				{
+//				}
+				bot.getBotName().setInfo(" ... return to our base!");
+				targetNavPoint = ctf.getOurBase().getLocation();
+			}
+		}
+    	
+    	if (pursuitFlagHeatup.isHot())
+    	{
+    		log.info("Run heating for FLAG!");
+    		navigate(targetNavPoint);    		    		
+    	}
     }
     
-    private boolean defenderBehaviour()
+    private boolean behaviourWithEnemyFlag()
+    {
+    	returnHome();
+    	return true;
+    }
+    
+    private void defenderBehaviour()
     {
     	if (combatDefender())
 		{
@@ -430,54 +604,73 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		
 		if (ctf.isOurFlagHome())
 		{
-			if(guardingOurBase())
-			{
-				bot.getBotName().setInfo(GUARDING);
-			}
+			guardingOurBase();
+			recvdOurFlagPositionTrully = true;
 		}
-
-		if (!ctf.isOurFlagHome())
+		else
 		{
-			if (ourFlagLocationOrigin != ctf.getOurFlag().getLocation())
-			{
-				bot.getBotName().setInfo(ENEMY_STEALERS_SEE);
-				targetNavPoint = ctf.getOurFlag().getLocation();
-				stealedOurFlagLocationSend = ctf.getOurFlag().getLocation();
-				
-				if (info.getLocation().equals(targetNavPoint))
-				{
-					if (stealedOurFlagLocationRecv != null)
-					{
-						targetNavPoint = stealedOurFlagLocationRecv;						
-					}
-					else
-					{
-						targetNavPoint = ctf.getEnemyBase();
-					}
-				}
-			}
-			else
-			{
-				bot.getBotName().setInfo(ENEMY_STEALERS_CANNOT_SEE);
-				targetNavPoint = ctf.getEnemyBase();				
-			}
+			searchOurFlag();
 		}
 		
-		return false;
+		if (ctf.isBotCarryingEnemyFlag())
+		{
+			targetNavPoint = ctf.getOurBase();
+		}
     }
     
-    private void defenderMovingController()
+    private void searchOurFlag()
     {
-    	if (targetNavPoint == null)
+    	stolenOurFlagLocationSend = null;
+    	stolenEnemyFlagLocationSend = null;
+    	getStolenOurFlagPosition();
+    	
+    	if (ctf.getOurFlag().isVisible())
     	{
-    		if (ctf.isOurFlagHome())
+    		// info
+    		bot.getBotName().setInfo(" ... run for our visible flag!");
+    		// calibration
+    		stolenOurFlagLocationSend = ctf.getOurFlag().getLocation();
+    		// change target navigation point
+    		targetNavPoint = ctf.getOurFlag().getLocation();
+    		// pursuit flag
+    		pursuitFlagHeatup.heat();
+    		sendDataViaTC();
+    	}
+    	else if (ctf.getEnemyFlag().isVisible())
+    	{
+    		bot.getBotName().setInfo(" ... run for enemy visible flag!");
+    		stolenEnemyFlagLocationSend = ctf.getEnemyFlag().getLocation();
+    		targetNavPoint = ctf.getEnemyFlag().getLocation();
+    		pursuitFlagHeatup.heat();
+    		sendDataViaTC();
+    	}
+    	else
+    	{
+    		if (stolenOurFlagLocationRecv != null && recvdOurFlagPositionTrully)
     		{
-    			targetNavPoint = defenderPosition;
+    			if (!info.atLocation(navPoints.getNearestNavPoint(stolenOurFlagLocationRecv)))
+    			{
+    				bot.getBotName().setInfo(" ... run for our hidden flag!");
+    				targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
+    				pursuitFlagHeatup.heat();
+    			}
+    			else
+    			{
+    				log.info("Recvd position of our flag are old - run to enemy base!!!");
+    				recvdOurFlagPositionTrully = false;
+    			}
     		}
     		else
     		{
-    			targetNavPoint = ctf.getEnemyBase().getLocation();
+    			bot.getBotName().setInfo(" ... run to enemy base for our flag!");
+    			targetNavPoint = ctf.getEnemyBase();
     		}
+    	}
+
+    	if (pursuitFlagHeatup.isHot())
+    	{
+    		log.info("Run heating for FLAG!");
+    		navigate(targetNavPoint);    		    		
     	}
     }
     
@@ -485,31 +678,52 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     {
     	if (!players.canSeeEnemies())
     	{
+    		Location centerOfRadius = null;
+
+    		if (MAP_NAME_BP2.equals(game.getMapName()))
+    		{
+    			if (team == 0)
+    			{
+    				centerOfRadius = navPoints.getNavPoint("PathNode46").getLocation();    				
+    			}
+    			else
+    			{
+    				centerOfRadius = navPoints.getNavPoint("PathNode47").getLocation();    				
+    			}
+    		}
+    		else
+    		{
+    			centerOfRadius = ctf.getOurBase().getLocation();
+    		}
+    		
+    		if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_DEFENDER, centerOfRadius))
+    		{
+    			return false;
+    		}   
+    		
     		if (isGetShotWithoutSeenEnemy())
     		{
     			bot.getBotName().setInfo(GET_SHOT_CANT_SEE_ENEMY);
     			return false;
     		}
-    		if (pickupSomeWeapon())
-    		{
-    			bot.getBotName().setInfo(PICKUP_WEAPONS);
-    			return false;
-    		}    		
     		
     		// Go on defenders positions
+    		bot.getBotName().setInfo(GUARDING + " FROM DEF_POSITION");
     		targetNavPoint = defenderPosition;
     	}
     	else
     	{
-    		targetNavPoint = ctf.getOurFlag().getLocation();
+    		bot.getBotName().setInfo(GUARDING + " FROM BASE");
+    		targetNavPoint = ctf.getOurFlag().getLocation();    		
     	}
+
+    	return true;
 		
-		return true;
     }
     
     private boolean isGetShotWithoutSeenEnemy()
     {
-    	if (players.canSeeEnemies() && senses.isShot())
+    	if (!players.canSeeEnemies() && senses.isShot())
 		{
 			if (navigation.isNavigating())
 			{
@@ -532,7 +746,8 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// MSG Init
     	TCRoleStealer stealer = new TCRoleStealer(info.getId(), msg);
     	// MSG set variables
-    	stealer.setEnemyFlagLocation(stealedEnemyFlagLocationSend);
+    	stealer.setEnemyFlagLocation(stolenEnemyFlagLocationSend);
+    	stealer.setOurFlagLocation(stolenOurFlagLocationSend);
     	stealer.setID(botNumber);
     	stealer.setCurrentLocation(info.getLocation());
     	
@@ -545,22 +760,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// MSG Init
     	TCRoleDefender defender = new TCRoleDefender(info.getId(), msg);
     	// MSG set variables
-    	defender.setOuFlagLocation(stealedOurFlagLocationSend);
+    	defender.setOurFlagLocation(stolenOurFlagLocationSend);
     	defender.setID(botNumber);
     	defender.setCurrentLocation(info.getLocation());
+    	defender.setNearestEnemyBotLocation(nearestEnemyBotLocationSend);
     	
     	// MSG send
     	tcClient.sendToTeam(defender);
-    }
-    
-    private void sendMsgToTeam(String msg)
-    {
-    	// MSG Init
-    	TCHello team = new TCHello(info.getId(), msg);
-    	// MSG set variables
-    	
-    	// MSG send
-    	tcClient.sendToTeam(team);
     }
     
     private boolean connectionToTC()
@@ -600,226 +806,95 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	if (senses.isShot())
 		{
 			navigation.setFocus(navigation.getNearestNavPoint(info.getLocation()));
-			move.jump();
 		}
     	
     	return false;
     }
-    
-    /**
-	 * Returns weapons that the bot does not have or are not loaded.
-	 * @param requiredWeapons
-	 * @return
-	 */
-	private Set<UT2004ItemType> filterNotLoaded(UT2004ItemType[] requiredWeapons)
-	{
-		Set<UT2004ItemType> result = new HashSet<UT2004ItemType>();
-		for (UT2004ItemType weapon : requiredWeapons)
-		{
-    		if (!weaponry.hasPrimaryLoadedWeapon(weapon))
-    		{
-    			result.add(weapon);
-    		}
-    	}
-		return result;
-	}
     
 	private boolean shooting()
 	{
 		// BOT can see enemies
 		if (players.canSeeEnemies())
     	{
-			if ((info.getCurrentWeaponType().equals(UT2004ItemType.SHOCK_RIFLE)
-					&& weaponry.hasAmmoForWeapon(UT2004ItemType.SHOCK_RIFLE))
-					|| (info.getCurrentWeaponType().equals(UT2004ItemType.LIGHTNING_GUN)
-					&& weaponry.hasAmmoForWeapon(UT2004ItemType.LIGHTNING_GUN)))
+			nearestEnemyBotLocationSend = players.getNearestVisibleEnemy().getLocation();
+			
+			pursuitEnemyHeatup.heat();
+			navigation.setFocus(nearestEnemyBotLocationSend);
+			shoot.shoot(weaponPrefs, nearestEnemyBotLocationSend);
+			
+			if (pursuitEnemyHeatup.isHot())
 			{
-				if (navigation.isNavigating())
-				{
-					navigation.stopNavigation();
-				}
-
-				if (!navigation.isNavigating())
-				{
-					navigation.setFocus(players.getNearestVisibleEnemy());
-					shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());	
-				}
+				sendDataViaTC();
+				navigation.setFocus(nearestEnemyBotLocationSend);
+				shoot.shoot(weaponPrefs, nearestEnemyBotLocationSend);
+			}
+    	}
+		else
+		{
+			nearestEnemyBotLocationSend = null;
+			
+			if (info.isShooting())
+			{
+				shoot.stopShooting();    			
 			}
 			
-			if (RANGE_HIGH < fwMap.getDistance(navigation.getNearestNavPoint(players.getNearestVisibleEnemy()), info.getNearestNavPoint()))
+			if (nearestEnemyBotLocationRecv != null)
 			{
-				if (move.isRunning())
-				{
-					move.setWalk();					
-				}
-				
-				navigation.setFocus(players.getNearestVisibleEnemy());
-				shoot.shoot(weaponPrefs, players.getNearestVisibleEnemy());
+				navigation.setFocus(navPoints.getNearestNavPoint(nearestEnemyBotLocationRecv));
 			}
-
-			return true;
-    	}
-
-		// BOT can't see enemies
-    	if (info.isShooting())
-    	{
-    		shoot.stopShooting();    			
-    	}
-    	
-    	if (info.isWalking())
-    	{
-    		move.setRun();    			
-    	}
+			else
+			{
+				navigation.setFocus(info.getNearestNavPoint());
+			}
+		}
     	
     	return false;
 	}
-	
-    private boolean pickUpItemViaDistance()
-    {
-    	
-    	double distance = Double.MAX_VALUE;
-    	Item item = info.getNearestVisibleItem();
-    	
-    	if (item != null
-    			&& item.getNavPoint() != null
-    			&& !weaponry.hasLoadedWeapon(item.getType()))
-    	{
-    		distance = info.getDistance(item);
-    	}
-    	  	
-    	if (distance < DISTANCE_PICKU_UP_ITEM_FOR_FLAGSTEALER)
-    	{
-    		targetNavPoint = info.getNearestVisibleItem().getNavPoint();
-    		
-    		return true;
-    	}
-    	
-    	return false;
-    }
-    
-    /**
-     * Translates 'types' to the set of "nearest spawned items" of those 'types'.
-     * @param types
-     * @return
-     */
-    private Set<Item> getNearestSpawnedItems(Collection<UT2004ItemType> types) {
-    	Set<Item> result = new HashSet<Item>();
-    	for (UT2004ItemType type : types) {
-    		Item n = getNearestSpawnedItem(type);
-    		if (n != null) {
-    			result.add(n);
-    		}
-    	}
-    	return result;
-    }
-    
-    /**
-     * Returns the nearest spawned item of 'type'.
-     * @param type
-     * @return
-     */
-    private Item getNearestSpawnedItem(UT2004ItemType type) {
-    	final NavPoint nearestNavPoint = info.getNearestNavPoint();
-    	Item nearest = DistanceUtils.getNearest(
-    			items.getSpawnedItems(type).values(), 
-    			info.getNearestNavPoint(),
-    			new DistanceUtils.IGetDistance<Item>() {
-					@Override
-					public double getDistance(Item object, ILocated target) {
-						return fwMap.getDistance(object.getNavPoint(), nearestNavPoint);
-					}
-    		
-    	});
-    	return nearest;
-    }
-    
+
     private boolean runForFlag()
     {
-    	if (itemViaDistanceAndUrgentHealth())
-    	{
-    		return false;
-    	}
-    	
     	// Navigation to enemy base for FLAG
     	targetNavPoint = ctf.getEnemyBase();
+    	
+		if(players.canSeeEnemies())
+        {
+			if (!navigatingCoverPath)
+			{
+				navigateCoverPath(ctf.getEnemyBase());
+				navigatingCoverPath = true;
+			}
+        }
+		else
+		{
+			navigatingCoverPath = false;
+		}
+		
+		if (!navigatingCoverPath)
+		{
+			if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_STEALER, info.getLocation()))
+			{
+				return false;
+			}
+		}
+
     	return true;
     }
     
     private boolean returnHome()
     {
-    	if (itemViaDistanceAndUrgentHealth())
-    	{
-    		return true;
-    	}
+    	bot.getBotName().setInfo(RUN_HOME_WITH_FLAG);
     	
     	targetNavPoint = ctf.getOurBase();
-        return true;
+    	stolenEnemyFlagLocationSend = info.getLocation();
+    	sendDataViaTC();
+    	
+    	return true;
     }
     
     private void navigate(ILocated location)
     {
-    	if (useCoverPath)
-    	{
-    		navigationCoverPath(location);
-    	}
-    	else
-    	{
-    		navigationStandard(location);
-    	}
-    }
-    
-    private boolean itemViaDistanceAndUrgentHealth()
-    {
-    	// Search ITEMs in BOT's near distance
-    	if (pickUpItemViaDistance())
-    	{
-    		return true;
-    	}
-    	
-    	// BOT needs urgent pick up health
-    	if (needHealthUrgent())
-    	{
-    		if (pickupNearestHealth())
-    		{
-    			return true;
-    		}
-    	}
-    	
-    	return false;
-    }
-
-    @SuppressWarnings({ "unchecked", "rawtypes" })
-    private void navigationCoverPath(ILocated location)
-    {
-    	PrecomputedPathFuture<NavPoint> path = generateCoverPath(location);
-    	if (path == null)
-    	{
-    		log.info(getName() + " ... could not generate COVER PATH!");
-    		navigationStandard(location);
-    		return;
-    	}
-    	
-    	log.info(getName() + " ... running along COVER PATH!");
-    	usingCoverPath = true;
-
-    	navigation.navigate((IPathFuture)path);
-    }
-    
-    private PrecomputedPathFuture<NavPoint> generateCoverPath(ILocated runningTo) {
-    	NavPoint startNav = info.getNearestNavPoint();
-    	NavPoint targetNav = navigation.getNearestNavPoint(runningTo);
-    	
-    	AStarResult<NavPoint> result = aStar.findPath(startNav, targetNav, new CoverMapView());
-    	
-    	PrecomputedPathFuture<NavPoint> pathFuture = new PrecomputedPathFuture<NavPoint>(startNav, targetNav, result.getPath());
-    	
-    	return pathFuture;
-    }
-    
-    private void navigationStandard(ILocated location)
-    {
     	usingCoverPath = false;
-    	navigation.navigate(location); 
+		navigation.navigate(location); 
     }
 
     private boolean combatDefender()
@@ -827,86 +902,11 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	// BOT is shooting
     	if (shooting())
     	{
-    		if (players.getNearestVisibleEnemy() != null)
-    		{
-    			pursueEnemy.heat();
-    			navigation.navigate(players.getNearestVisibleEnemy());
-    		}
-    		
     		return true;
     	}
     	
     	// BOT isn't shooting
     	return false;
-    }
-    
-    private boolean needHealthUrgent()
-    {
-        return info.getHealth() < 20 || (info.getHealth() + info.getArmor()) < 40;
-    }
-    
-    private boolean pickupSomeWeapon()
-    {
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.SHOCK_RIFLE))
-        {
-            if (navigateToItemType(UT2004ItemType.SHOCK_RIFLE))
-            {
-            	return true;
-            }
-        }
-        
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.MINIGUN))
-        {
-            if (navigateToItemType(UT2004ItemType.MINIGUN))
-            {
-            	return true;
-            }
-        }
-        
-        if (!weaponry.hasLoadedWeapon(UT2004ItemType.LINK_GUN))
-        {
-            if (navigateToItemType(UT2004ItemType.LINK_GUN))
-            {
-            	return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    private boolean pickupNearestHealth()
-    {
-        if (navigateToItemType(UT2004ItemType.HEALTH_PACK))
-        {
-        	return true;
-        }
-        
-        return false;
-    }
-    
-    private boolean navigateToItemType(UT2004ItemType type)
-    {
-        if (navigation.isNavigatingToItem() && navigation.getCurrentTargetItem().getType() == type)
-        {
-        	return true;
-        }
-        
-        Item item = fwMap.getNearestItem(items.getSpawnedItems(type).values(), navPoints.getNearestNavPoint());        
-        
-        if (item == null)
-        {
-            log.warning("No " + type.getName() + " to run to...");
-            return false;
-        }
-        
-        if (item.getLocation() == null)
-        {
-            log.warning("No location " + type.getName() + " to run to...");
-            return false;
-        }
-        
-        targetNavPoint = item.getNavPoint();
-        return true;
     }
 
     /**
@@ -946,52 +946,6 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	PlayerMessage msg = getPlayer(id);
     	if (msg == null) return id.getStringId();
     	return getPlayer(id).getName();
-    }
-    
-    private class CoverMapView implements IPFMapView<NavPoint> {
-
-		@Override
-		public Collection<NavPoint> getExtraNeighbors(NavPoint node, Collection<NavPoint> mapNeighbors) {
-			return null;
-		}
-
-		@Override
-		public int getNodeExtraCost(NavPoint node, int mapCost) {
-                    int penalty = 0;
-                    
-                    for (Player player : players.getVisiblePlayers().values())
-                    {
-                        if (visibility.isVisible(node, player.getLocation()))
-                        {
-                            penalty += 100;
-                        }
-                    }
-                    return 0;
-		}
-
-		@Override
-		public int getArcExtraCost(NavPoint nodeFrom, NavPoint nodeTo, int mapCost) {
-			return 0;
-		}
-
-		@Override
-		public boolean isNodeOpened(NavPoint node) {
-			// ALL NODES ARE OPENED
-			return true;
-		}
-
-		@Override
-		public boolean isArcOpened(NavPoint nodeFrom, NavPoint nodeTo) {
-			// ALL ARCS ARE OPENED
-	        NavPointNeighbourLink link = nodeFrom.getOutgoingEdges().get(nodeTo.getId());
-	        if ((link.getFlags() & FloydWarshallMap.BAD_EDGE_FLAG) > 0)
-	        {
-	            return false;
-	        }
-                
-			return true;
-		}
-    	
     }
     
     private static void initialize(String [] args) throws Exception
@@ -1049,6 +1003,144 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	return tmp;
     }
     
+    private void removeEdgesAccordingMaps(String mapName)
+    {
+    	if (MAP_NAME_BP2.equals(mapName))
+        {
+    		// ***** RED
+    		// middle
+    		navBuilder.removeEdge("AssaultPath12", "PathNode74");
+    		navBuilder.removeEdge("AssaultPath12", "PathNode81");
+    		// right
+    		navBuilder.removeEdge("JumpSpot2", "PathNode74");
+    		// left
+    		navBuilder.removeEdge("InventorySpot59", "PathNode81");
+    		// others
+    		navBuilder.removeEdge("JumpSpot13", "PathNode75");
+    		
+    		// *** BLUE
+    		// middle
+    		navBuilder.removeEdge("AssaultPath5", "PathNode44");
+    		navBuilder.removeEdge("AssaultPath5", "PathNode0");
+    		// right
+    		navBuilder.removeEdge("InventorySpot55", "PathNode44");
+    		// left
+    		navBuilder.removeEdge("JumpSpot3", "PathNode0");
+        }
+    	if (MAP_NAME_CITADEL.equals(mapName))
+    	{
+    		// ***** RED
+    		navBuilder.removeEdge("PathNode26", "PathNode23");
+    		navBuilder.removeEdge("PathNode38", "PathNode23");
+    	}
+    	if (MAP_NAME_MAUL.equals(mapName))
+    	{
+    		// ***** RED
+    		navBuilder.removeEdge("PathNode67", "JumpSpot18");
+    		navBuilder.removeEdge("PathNode66", "JumpSpot18");
+    		navBuilder.removeEdge("PathNode95", "JumpSpot3");  // could not find 3
+    		navBuilder.removeEdge("PathNode66", "JumpSpot2");
+    		navBuilder.removeEdge("PathNode96", "jumpspot9");  // could not find 9
+    		navBuilder.removeEdge("PathNode93", "JumpSpot0");
+    		
+    		// ***** BLUE
+    		navBuilder.removeEdge("PathNode6", "JumpSpot20");
+    		navBuilder.removeEdge("PathNode48", "JumpSpot7");  // could not find 7
+    		navBuilder.removeEdge("PathNode12", "JumpSpot6"); // could not find 6
+    		navBuilder.removeEdge("PathNode143", "JumpSpot8"); // could not find 8
+    		navBuilder.removeEdge("PathNode6", "JumpSpot4");
+    	}
+    }
+    
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private void navigateCoverPath(NavPoint runningTo)
+    {
+    	PrecomputedPathFuture<NavPoint> path = generateCoverPath(runningTo);
+    	if (path == null) {
+    		log.info("Could not generate COVER PATH");
+    		navigate(runningTo);    		
+    		return;
+    	}
+    	
+    	log.info("RUNNING ALONG COVER PATH");
+    	
+    	usingCoverPath = true;
+    	navigation.navigate((IPathFuture)path);
+    	
+    	drawPath(path);
+    }
+    
+    public void drawPath(PrecomputedPathFuture<NavPoint> path)
+    {
+        draw.clearAll();
+        
+        List<NavPoint> pathPoints = path.get();
+        
+        for(int i = 1; i < pathPoints.size(); i++)
+        {
+            draw.drawLine(pathPoints.get(i - 1), pathPoints.get(i));
+        }
+    }
+    
+    private PrecomputedPathFuture<NavPoint> generateCoverPath(NavPoint runningTo)
+    {
+    	NavPoint startNav = info.getNearestNavPoint();
+    	NavPoint targetNav = runningTo;
+    	
+    	AStarResult<NavPoint> result = aStar.findPath(startNav, targetNav, new CoverMapView());
+    	PrecomputedPathFuture<NavPoint> pathFuture = new PrecomputedPathFuture<NavPoint>(startNav, targetNav, result.getPath());
+    	
+    	return pathFuture;
+    }
+    
+    private class CoverMapView implements IPFMapView<NavPoint>
+    {
+    	@Override
+		public Collection<NavPoint> getExtraNeighbors(NavPoint node, Collection<NavPoint> mapNeighbors) {
+			return null;
+		}
+
+		@Override
+		public int getNodeExtraCost(NavPoint node, int mapCost) {
+            int penalty = 0;
+            
+            for(Player player : players.getVisibleEnemies().values())
+            {
+                if(visibility.isVisible(node, player.getLocation()))
+                {
+                    penalty += 500;
+                }
+            }
+            
+            return penalty;
+		}
+
+		@Override
+		public int getArcExtraCost(NavPoint nodeFrom, NavPoint nodeTo, int mapCost) {
+			return 0;
+		}
+
+		@Override
+		public boolean isNodeOpened(NavPoint node) {
+			// ALL NODES ARE OPENED
+			return true;
+		}
+
+		@Override
+		public boolean isArcOpened(NavPoint nodeFrom, NavPoint nodeTo) {
+			// ALL ARCS ARE OPENED
+            NavPointNeighbourLink link = nodeFrom.getOutgoingEdges().get(nodeTo.getId());
+            
+            if( (link.getFlags() & FloydWarshallMap.BAD_EDGE_FLAG) > 0)
+            {
+                return false;
+            }
+                        
+			return true;
+		}
+    	
+    }
+    
     public static void main(String args[]) throws PogamutException, Exception
     {
     	initialize(args);
@@ -1060,19 +1152,5 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     	
     	// Start bots
     	new UT2004BotRunner(TeamCommBot.class, "TCBot", address, PORT).setLogLevel(Level.WARNING).startAgents(teamBotsCount);
-        //new UT2004BotRunner(TeamCommBot.class, "TCBot").setMain(true).setLogLevel(Level.WARNING).startAgents(teamBotsCount);       
     }
-    
-//    @Override 
-//    public Initialize getInitializeCommand() 
-//    {
-//    this.botId = BOT_ID_COUNTER++;
-//
-//    Initialize init = new Initialize();
-//    init.setName(BOT_NAME_PREFIX + this.botId);
-//    init.setTeam(MKBot.param_team);
-//    init.setDesiredSkill(MKBot.param_skill); 
-//
-//    return init;
-//    }
 }

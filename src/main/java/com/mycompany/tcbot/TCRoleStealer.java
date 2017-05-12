@@ -1,6 +1,7 @@
 package com.mycompany.tcbot;
 
 import cz.cuni.amis.pogamut.base3d.worldview.object.ILocated;
+import cz.cuni.amis.pogamut.base3d.worldview.object.Location;
 import cz.cuni.amis.pogamut.unreal.communication.messages.UnrealId;
 import cz.cuni.amis.pogamut.ut2004.teamcomm.mina.messages.TCMessageData;
 import cz.cuni.amis.utils.token.IToken;
@@ -17,11 +18,15 @@ public class TCRoleStealer extends TCMessageData
 	/** Unreal ID of sender */
 	private UnrealId who;
 	/** Enemy flag location */
-	private ILocated enemyFlagLocation;
+	private Location enemyFlagLocation;
+	/** Our stealed flag location */
+	private Location ourFlagLocation;
 	/** Bot ID */
 	private int ID;
 	/** Bot location */
-	private ILocated currentLocation;
+	private Location currentLocation;
+	/** Nearest enemy bot location */
+	private Location nearestEnemyBotLocation;
 	
 	public TCRoleStealer(UnrealId who, String msg)
 	{
@@ -46,11 +51,11 @@ public class TCRoleStealer extends TCMessageData
 		this.who = who;
 	}
 	
-	public ILocated getEnemyFlagLocation() {
+	public Location getEnemyFlagLocation() {
 		return enemyFlagLocation;
 	}
 
-	public void setEnemyFlagLocation(ILocated enemyFlagLocation) {
+	public void setEnemyFlagLocation(Location enemyFlagLocation) {
 		this.enemyFlagLocation = enemyFlagLocation;
 	}
 	
@@ -66,8 +71,24 @@ public class TCRoleStealer extends TCMessageData
 		return currentLocation;
 	}
 
-	public void setCurrentLocation(ILocated currentLocation) {
+	public void setCurrentLocation(Location currentLocation) {
 		this.currentLocation = currentLocation;
+	}
+
+	public Location getOurFlagLocation() {
+		return ourFlagLocation;
+	}
+
+	public void setOurFlagLocation(Location ouFlagLocation) {
+		this.ourFlagLocation = ouFlagLocation;
+	}
+
+	public Location getNearestEnemyBotLocation() {
+		return nearestEnemyBotLocation;
+	}
+
+	public void setNearestEnemyBotLocation(Location nearestEnemyBotLocation) {
+		this.nearestEnemyBotLocation = nearestEnemyBotLocation;
 	}
 
 	@Override
