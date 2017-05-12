@@ -290,29 +290,16 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     @Override
     public void logic() throws PogamutException
     {	   
-    	if (navigation.isTryingToGetBackToNav())
-    	{
-    		log.info("Trying to go back to navigation mesh " + getBotName());
-    		tryingCounter++;
-    		if (tryingCounter > MAX_CYCLES_TO_AUTOKILL)
-    		{
-    			log.info(getBotName() + " will be killed!");
-    			tryingCounter = 0;
-    			getBot().kill();    			
-    		}
-    	}
-    	else
-    	{
-    		tryingCounter = 0;
-    	}
     	
     	// TODO - orientation point
     	connectionToTC();
-    	
+    	// Get information from communication stream
     	getStolenOurFlagPosition();
     	getStolenEnemyFlagPosition();
-    	
+    	// Send data to stream
     	sendDataViaTC();
+    	// Kill passive bot
+    	killPassiveBot();
     	
     	// ********** CODE FOR STEALER
     	if (stealer)
@@ -335,6 +322,25 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 
     	navigate(targetNavPoint);    		
     	notMoveTurnAround();
+    }
+    
+    private void killPassiveBot()
+    {
+    	if (navigation.isTryingToGetBackToNav())
+    	{
+    		log.info("Trying to go back to navigation mesh " + getBotName());
+    		tryingCounter++;
+    		if (tryingCounter > MAX_CYCLES_TO_AUTOKILL)
+    		{
+    			log.info(getBotName() + " will be killed!");
+    			tryingCounter = 0;
+    			getBot().kill();    			
+    		}
+    	}
+    	else
+    	{
+    		tryingCounter = 0;
+    	}
     }
     
     private void sendDataViaTC()
@@ -612,17 +618,20 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     
     private void defenderBehaviour()
     {
+    	// DEFENDER *** COMBAT
     	if (combatDefender())
 		{
 			bot.getBotName().setInfo(COMBAT);
 		}
 
+    	// DEFENDER *** GO FOR ENEMY'S FLAG
     	if (ctf.getEnemyFlag().isVisible())
     	{
     		targetNavPoint = ctf.getEnemyFlag().getLocation();
     		return;
     	}
     	
+    	// DEFENDER *** GO HOME WITH ENEMY'S FLAG
     	if (ctf.isBotCarryingEnemyFlag())
     	{
     		targetNavPoint = ctf.getOurBase();
@@ -631,11 +640,13 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 		
 		if (ctf.isOurFlagHome())
 		{
+			// DEFENDER *** GUARDING OUR FLAG (FLAG IS HOME)
 			guardingOurBase();
 			recvdOurFlagPositionTrully = true;
 		}
 		else
 		{
+			// DEFENDER *** SEARCHING OUR FLAG (FLAG IS NOT HOME)
 			searchOurFlag();
 		}
     }
@@ -664,7 +675,7 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     			bot.getBotName().setInfo(" ... run for our hidden flag!");
     			targetNavPoint = navPoints.getNearestNavPoint(stolenOurFlagLocationRecv);
 
-    			if (info.atLocation(targetNavPoint, 30) && !navigation.isNavigating())
+    			if (info.atLocation(targetNavPoint, 30))
     			{
     				log.info("Old position of our flag!");
     				recvdOurFlagPositionTrully = false;
