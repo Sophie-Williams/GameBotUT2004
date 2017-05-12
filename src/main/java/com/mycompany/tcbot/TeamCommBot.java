@@ -617,6 +617,12 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 			bot.getBotName().setInfo(COMBAT);
 		}
 
+    	if (ctf.getEnemyFlag().isVisible())
+    	{
+    		targetNavPoint = ctf.getEnemyFlag().getLocation();
+    		return;
+    	}
+    	
     	if (ctf.isBotCarryingEnemyFlag())
     	{
     		targetNavPoint = ctf.getOurBase();
@@ -831,29 +837,53 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
 
     private boolean runForFlag()
     {
+    	if (!ctf.isOurFlagHome() && ctf.getOurFlag().isVisible())
+    	{
+    		targetNavPoint = ctf.getOurFlag().getLocation();
+    		navigatingCoverPath = false;
+    		return true;
+    	}
+    	
+    	if (ctf.getEnemyFlag().isVisible())
+    	{
+    		targetNavPoint = ctf.getEnemyFlag().getLocation();
+    		navigatingCoverPath = false;
+    		return true;
+    	}
+    	
     	// Navigation to enemy base for FLAG
     	targetNavPoint = ctf.getEnemyBase();
     	
-		if(players.canSeeEnemies())
-        {
-			if (!navigatingCoverPath)
-			{
-				navigateCoverPath(ctf.getEnemyBase());
-				navigatingCoverPath = true;
-			}
-        }
-		else
-		{
-			navigatingCoverPath = false;
-		}
-		
-		if (!navigatingCoverPath)
-		{
-			if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_STEALER, info.getLocation()))
+    	if (game.getMapName().equals(MAP_NAME_BP2))
+    	{
+    		if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_STEALER, info.getLocation()))
 			{
 				return false;
 			}
-		}
+    	}
+    	else
+    	{
+    		if(players.canSeeEnemies())
+    		{
+    			if (!navigatingCoverPath)
+    			{
+    				navigateCoverPath(ctf.getEnemyBase());
+    				navigatingCoverPath = true;
+    			}
+    		}
+    		else
+    		{
+    			navigatingCoverPath = false;
+    		}
+    		
+    		if (!navigatingCoverPath)
+    		{
+    			if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_STEALER, info.getLocation()))
+    			{
+    				return false;
+    			}
+    		}
+    	}
 
     	return true;
     }
@@ -861,8 +891,33 @@ public class TeamCommBot extends UT2004BotTCController<UT2004Bot>
     private boolean returnHome()
     {
     	bot.getBotName().setInfo(RUN_HOME_WITH_FLAG);
-    	
     	targetNavPoint = ctf.getOurBase();
+    	
+    	if (!game.getMapName().equals(MAP_NAME_BP2))
+    	{
+    		if(players.canSeeEnemies())
+    		{
+    			if (!navigatingCoverPath)
+    			{
+    				navigateCoverPath(ctf.getOurBase());
+    				navigatingCoverPath = true;
+    			}
+    		}
+    		else
+    		{
+    			navigatingCoverPath = false;
+    		}
+    		
+    		if (!navigatingCoverPath)
+    		{
+    			if (pickUpItemsViaDistanceTypeAndCategory(DISTANCE_PICK_UP_ITEM_FOR_STEALER, info.getLocation()))
+    			{
+    				return false;
+    			}
+    		}
+    	}
+    	
+    	
     	stolenEnemyFlagLocationSend = info.getLocation();
     	sendDataViaTC();
     	
